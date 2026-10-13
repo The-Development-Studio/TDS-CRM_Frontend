@@ -1,0 +1,9 @@
+{
+  "framework": "vite",
+  "buildCommand": "pnpm typecheck && pnpm build",
+  "outputDirectory": "dist",
+  "rewrites": [
+    { "source": "/staff-login", "destination": "/" },
+    { "source": "/customer-portal", "destination": "/" }
+  ]
+}
