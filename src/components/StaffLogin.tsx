@@ -25,8 +25,9 @@ const apiRequest = async <T,>(path: string, body: Record<string, string>) => {
 };
 
 export function StaffLogin({ onAuthenticated }: StaffLoginProps) {
-  const [mode, setMode] = useState<"login" | "invite" | "accept">(
-    new URLSearchParams(window.location.search).has("invite") ? "accept" : "login"
+  const query = new URLSearchParams(window.location.search);
+  const [mode, setMode] = useState<"login" | "invite" | "accept" | "forgot" | "reset">(
+    query.has("invite") ? "accept" : query.has("reset") ? "reset" : "login"
   );
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
@@ -53,6 +54,16 @@ export function StaffLogin({ onAuthenticated }: StaffLoginProps) {
         setNotice(result.message);
         setMode("login");
         window.history.replaceState({}, "", "/staff-login");
+      } else if (mode === "forgot") {
+        const result = await apiRequest<{ message: string }>("request-password-reset", { email });
+        setNotice(result.message);
+      } else if (mode === "reset") {
+        const token = new URLSearchParams(window.location.search).get("reset") ?? "";
+        const result = await apiRequest<{ message: string }>("reset-password", { token, password });
+        setNotice(result.message);
+        setMode("login");
+        setPassword("");
+        window.history.replaceState({}, "", "/staff-login");
       } else {
         const result = await apiRequest<{ data: StaffUser }>("login", { email, password });
         await onAuthenticated(result.data);
@@ -64,11 +75,23 @@ export function StaffLogin({ onAuthenticated }: StaffLoginProps) {
     }
   };
 
-  const title = mode === "accept" ? "Activate your account" : mode === "invite" ? "Invite a staff member" : "Welcome back";
+  const title = mode === "accept"
+    ? "Activate your account"
+    : mode === "invite"
+      ? "Invite a staff member"
+      : mode === "forgot"
+        ? "Reset your password"
+        : mode === "reset"
+          ? "Create a new password"
+          : "Welcome back";
   const subtitle = mode === "invite"
     ? "Invite your team to collaborate in one secure workspace."
     : mode === "accept"
       ? "Set up your password to activate your TDS workspace."
+      : mode === "forgot"
+        ? "Enter your work email and we'll send you a secure reset link."
+        : mode === "reset"
+          ? "Choose a new password for your TDS workspace."
       : "Sign in to continue to your workspace.";
   return (
     <main className="staff-login-shell flex min-h-screen items-center justify-center px-4 py-8 sm:px-8">
@@ -136,8 +159,14 @@ export function StaffLogin({ onAuthenticated }: StaffLoginProps) {
                 <label className="staff-login-label block text-sm font-semibold">Password
                   <input required type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Enter your password" className="staff-login-input mt-2 h-12 w-full rounded-xl border px-3.5 text-sm font-normal" />
                 </label>
+                <button type="button" onClick={() => { setMode("forgot"); setError(""); setNotice(""); }} className="-mt-2 block w-full text-right text-sm font-semibold text-orange-700 hover:text-orange-800">
+                  Forgot password?
+                </button>
               </>}
-              {mode === "accept" && <>
+              {mode === "forgot" && <label className="staff-login-label block text-sm font-semibold">Work email
+                <input required type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@company.com" className="staff-login-input mt-2 h-12 w-full rounded-xl border px-3.5 text-sm font-normal" />
+              </label>}
+              {(mode === "accept" || mode === "reset") && <>
                 <label className="staff-login-label block text-sm font-semibold">Create password
                   <input required minLength={12} maxLength={128} type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 12 characters" className="staff-login-input mt-2 h-12 w-full rounded-xl border px-3.5 text-sm font-normal" />
                 </label>
@@ -146,13 +175,13 @@ export function StaffLogin({ onAuthenticated }: StaffLoginProps) {
               {error && <p role="alert" className="rounded-xl border border-rose-100 bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
               {notice && <p role="status" className="rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</p>}
               <button disabled={busy} className="staff-login-submit flex h-12 w-full items-center justify-center gap-2 rounded-xl px-4 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60">
-                {busy ? "Please wait…" : mode === "invite" ? "Send invitation" : mode === "accept" ? "Activate account" : "Sign in to workspace"}
+                {busy ? "Please wait…" : mode === "invite" ? "Send invitation" : mode === "accept" ? "Activate account" : mode === "forgot" ? "Send reset link" : mode === "reset" ? "Update password" : "Sign in to workspace"}
                 {!busy && <ArrowRight className="h-4 w-4" />}
               </button>
             </form>
-            {mode !== "accept" && (
-              <button type="button" onClick={() => { setMode(mode === "invite" ? "login" : "invite"); setError(""); setNotice(""); }} className="mt-6 w-full text-center text-sm font-semibold text-orange-700 hover:text-orange-800">
-                {mode === "invite" ? "Back to sign in" : "Set up or invite a staff account"}
+            {mode !== "accept" && mode !== "reset" && (
+              <button type="button" onClick={() => { setMode(mode === "login" ? "invite" : "login"); setError(""); setNotice(""); }} className="mt-6 w-full text-center text-sm font-semibold text-orange-700 hover:text-orange-800">
+                {mode === "login" ? "Set up or invite a staff account" : "Back to sign in"}
               </button>
             )}
             <p className="mt-8 flex items-center justify-center gap-2 text-xs text-slate-400"><LockKeyhole className="h-3.5 w-3.5" /> Your workspace is protected by secure sign-in</p>
