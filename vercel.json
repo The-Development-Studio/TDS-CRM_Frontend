@@ -3,6 +3,10 @@
   "buildCommand": "pnpm typecheck && pnpm build",
   "outputDirectory": "dist",
   "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://tase-crm-backend.onrender.com/api/:path*"
+    },
     { "source": "/staff-login", "destination": "/" },
     { "source": "/customer-portal", "destination": "/" }
   ]
