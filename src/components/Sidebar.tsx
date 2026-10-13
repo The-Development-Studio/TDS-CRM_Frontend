@@ -29,6 +29,7 @@ interface SidebarProps {
   onToggleCollapse: () => void;
   mobileOpen: boolean;
   onCloseMobile: () => void;
+  allowedPages: string[];
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -37,7 +38,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   collapsed,
   onToggleCollapse,
   mobileOpen,
-  onCloseMobile
+  onCloseMobile,
+  allowedPages
 }) => {
   const menuSections = [
     {
@@ -146,7 +148,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Navigation Links */}
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4 space-y-6">
-        {menuSections.map((section, idx) => (
+        {menuSections.map((section) => ({ ...section, items: section.items.filter((item) => allowedPages.includes(item.id)) })).filter((section) => section.items.length > 0).map((section, idx) => (
           <div key={idx} className="space-y-1">
             {!collapsed && (
               <h4 className="mb-1.5 px-3 text-[10px] font-bold uppercase tracking-wider text-slate-900">

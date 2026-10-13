@@ -5,6 +5,7 @@ import { Header } from './components/Header';
 import { CustomerPortalInviteModal } from './components/CustomerPortalInviteModal';
 import { StaffLogin, StaffUser } from './components/StaffLogin';
 import { StaffInviteModal } from './components/StaffInviteModal';
+import { MyProfile } from './components/MyProfile';
 import { NewLeadModal } from './components/NewLeadModal';
 import { RecordEditorField, RecordEditorModal, RecordEditorValues } from './components/RecordEditorModal';
 import type {
@@ -20,6 +21,7 @@ import { loadOrganizationProfile, saveOrganizationProfile } from './data/organiz
 import type { OrganizationProfile } from './types/crm';
 import { isArrayOf, usePersistentState } from './hooks/usePersistentState';
 import { prepareStaffData } from './data/staffData';
+import { allPageAccessIds, pageForView } from './data/pageAccess';
 
 const Dashboard = lazy(() => import('./components/Dashboard').then(({ Dashboard }) => ({ default: Dashboard })));
 const ActivitiesHub = lazy(() => import('./components/ActivitiesHub').then(({ ActivitiesHub }) => ({ default: ActivitiesHub })));
@@ -207,8 +209,9 @@ const getEditorConfig = (item: EditableRecord): { title: string; fields: RecordE
   }
 };
 
-function CrmApp({ staffUser, onLogout }: { staffUser: StaffUser; onLogout: () => Promise<void> }) {
-  const [currentView, setCurrentView] = useState<string>('dashboard');
+function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUser; onStaffUserChange: (user: StaffUser) => void; onLogout: () => Promise<void> }) {
+  const allowedPages = staffUser.role === 'admin' ? allPageAccessIds : staffUser.pageAccess;
+  const [currentView, setCurrentView] = useState<string>(() => allowedPages[0] ?? 'dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
@@ -228,6 +231,7 @@ function CrmApp({ staffUser, onLogout }: { staffUser: StaffUser; onLogout: () =>
   const [organization, setOrganization] = useState<OrganizationProfile>(loadOrganizationProfile);
   const [syncError, setSyncError] = useState('');
   const [showStaffInvite, setShowStaffInvite] = useState(false);
+  const [showMyProfile, setShowMyProfile] = useState(false);
   const lastSyncedCollections = useRef<Record<string, unknown[]>>({});
   const syncQueue = useRef(Promise.resolve());
 
@@ -243,6 +247,10 @@ function CrmApp({ staffUser, onLogout }: { staffUser: StaffUser; onLogout: () =>
     ['leads', 'customers', 'activities', 'opportunities', 'proposals', 'invoices', 'amc-renewals']
       .forEach((key) => localStorage.removeItem(`tds-crm:v1:${key}`));
   }, []);
+
+  useEffect(() => {
+    if (!allowedPages.includes(pageForView(currentView))) setCurrentView(allowedPages[0] ?? 'dashboard');
+  }, [allowedPages, currentView]);
 
   useEffect(() => {
     const collections = {
@@ -332,6 +340,11 @@ function CrmApp({ staffUser, onLogout }: { staffUser: StaffUser; onLogout: () =>
 
   // Handlers
   const handleNavigate = (view: string) => {
+    if (!allowedPages.includes(pageForView(view))) {
+      setSyncError('You do not have access to that page. Ask an administrator to update your page access.');
+      return;
+    }
+    setSyncError('');
     setCurrentView(view);
     if (view !== 'lead-360') {
       setSelectedLeadId(null);
@@ -412,11 +425,13 @@ function CrmApp({ staffUser, onLogout }: { staffUser: StaffUser; onLogout: () =>
   };
 
   const handleSelectLead = (leadId: string) => {
+    if (!allowedPages.includes('leads')) return;
     setSelectedLeadId(leadId);
     setCurrentView('lead-360');
   };
 
   const handleSelectCustomer = (customerId: string) => {
+    if (!allowedPages.includes('customers')) return;
     setSelectedCustomerId(customerId);
     setCurrentView('customer-360');
   };
@@ -632,6 +647,14 @@ function CrmApp({ staffUser, onLogout }: { staffUser: StaffUser; onLogout: () =>
   };
 
   const handleQuickCreate = (type: string) => {
+    const requiredPage: Record<string, string> = {
+      lead: 'leads', activity: 'activities', opportunity: 'pipeline', proposal: 'proposals',
+      invoice: 'invoices', amc: 'amc', customer: 'customers'
+    };
+    if (requiredPage[type] && !allowedPages.includes(requiredPage[type])) {
+      setSyncError('You do not have access to create records in that area.');
+      return;
+    }
     if (type === 'lead') {
       setIsNewLeadModalOpen(true);
     } else if (type === 'activity') {
@@ -721,6 +744,7 @@ function CrmApp({ staffUser, onLogout }: { staffUser: StaffUser; onLogout: () =>
         onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
         mobileOpen={mobileSidebarOpen}
         onCloseMobile={() => setMobileSidebarOpen(false)}
+        allowedPages={allowedPages}
       />
       {mobileSidebarOpen && (
         <button
@@ -740,20 +764,26 @@ function CrmApp({ staffUser, onLogout }: { staffUser: StaffUser; onLogout: () =>
           onSearchSelectCustomer={handleSelectCustomer}
           onNavigate={handleNavigate}
           onOpenSidebar={() => setMobileSidebarOpen(true)}
-          leads={leads}
-          customers={customers}
-          opportunities={opportunities}
-          invoices={invoices}
-          activities={activities}
-          proposals={proposals}
-          amcRenewals={amcRenewals}
-          accountName={organization.founderName}
-          accountEmail={organization.founderEmail}
+          leads={allowedPages.includes('leads') ? leads : []}
+          customers={allowedPages.includes('customers') ? customers : []}
+          opportunities={allowedPages.includes('pipeline') ? opportunities : []}
+          invoices={allowedPages.some((page) => ['proforma', 'invoices', 'payments'].includes(page)) ? invoices : []}
+          activities={allowedPages.includes('activities') ? activities : []}
+          proposals={allowedPages.some((page) => ['quotations', 'proposals'].includes(page)) ? proposals : []}
+          amcRenewals={allowedPages.includes('amc') ? amcRenewals : []}
+          accountName={staffUser.name}
+          accountEmail={staffUser.email}
+          accountRole={staffUser.role}
+          accountJobTitle={staffUser.jobTitle}
+          allowedPages={allowedPages}
+          onOpenProfile={() => setShowMyProfile(true)}
+          onSignOut={() => { void onLogout().catch((reason: unknown) => setSyncError(reason instanceof Error ? reason.message : 'Could not sign out.')); }}
         />
         <div className="flex min-h-10 items-center justify-between gap-3 border-b border-slate-100 bg-white px-4 py-1.5 text-xs text-slate-500 sm:px-6">
           <span>{syncError ? <span role="alert" className="text-rose-700">Shared-data sync failed: {syncError}</span> : `Signed in as ${staffUser.name} (${staffUser.role})`}</span>
           <div className="flex items-center gap-2">
             {staffUser.role === 'admin' && <button type="button" onClick={() => setShowStaffInvite(true)} className="rounded-lg border border-slate-200 px-3 py-1.5 font-semibold text-slate-600 hover:bg-slate-50">Invite staff</button>}
+            <button type="button" onClick={() => setShowMyProfile(true)} className="rounded-lg border border-slate-200 px-3 py-1.5 font-semibold text-slate-600 hover:bg-slate-50">My Profile</button>
             <button type="button" onClick={() => {
               void onLogout().catch((reason: unknown) => setSyncError(reason instanceof Error ? reason.message : 'Could not sign out.'));
             }} className="rounded-lg border border-slate-200 px-3 py-1.5 font-semibold text-slate-600 hover:bg-slate-50">Sign out</button>
@@ -940,6 +970,7 @@ function CrmApp({ staffUser, onLogout }: { staffUser: StaffUser; onLogout: () =>
         />
       )}
       {showStaffInvite && <StaffInviteModal onClose={() => setShowStaffInvite(false)} />}
+      {showMyProfile && <MyProfile user={staffUser} onClose={() => setShowMyProfile(false)} onSaved={async (user) => { onStaffUserChange(user); setShowMyProfile(false); }} />}
       {editingRecord && (() => {
         const editorConfig = getEditorConfig(editingRecord);
         const editableFields = editingRecord.type === 'opportunity' &&
@@ -975,7 +1006,7 @@ export default function App() {
           throw new Error(result.error || `Could not verify staff session (${response.status})`);
         }
         const result = await response.json() as { data: StaffUser };
-        await prepareStaffData();
+        if (result.data.profileCompleted) await prepareStaffData(result.data);
         setStaffUser(result.data);
       })
       .catch((reason: unknown) => setAuthError(reason instanceof Error ? reason.message : 'Could not load shared CRM data.'))
@@ -992,13 +1023,20 @@ export default function App() {
     return <div>
       {authError && <p role="alert" className="fixed left-1/2 top-4 z-10 -translate-x-1/2 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{authError}</p>}
       <StaffLogin onAuthenticated={async (user) => {
-        await prepareStaffData();
+        if (user.profileCompleted) await prepareStaffData(user);
         setStaffUser(user);
         setAuthError('');
       }} />
     </div>;
   }
-  return <CrmApp staffUser={staffUser} onLogout={async () => {
+  if (!staffUser.profileCompleted) {
+    return <div className="min-h-screen bg-slate-950"><MyProfile required user={staffUser} onSaved={async (user) => {
+      await prepareStaffData(user);
+      setStaffUser(user);
+      setAuthError('');
+    }} /></div>;
+  }
+  return <CrmApp staffUser={staffUser} onStaffUserChange={setStaffUser} onLogout={async () => {
     const response = await fetch('/api/staff-auth/logout', { method: 'POST', credentials: 'include' });
     if (!response.ok) {
       const result = await response.json().catch(() => ({})) as { error?: string };

@@ -1,15 +1,58 @@
 import { FormEvent, useState } from "react";
-import { ArrowRight, Check, LockKeyhole, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowRight, Check, Eye, EyeOff, LockKeyhole, ShieldCheck, Sparkles } from "lucide-react";
 import appLogo from "../assets/logo2.png";
 
 export interface StaffUser {
+  id: string;
   email: string;
   name: string;
   role: "admin" | "staff";
+  jobTitle: string;
+  department: string;
+  phone: string;
+  profileCompleted: boolean;
+  pageAccess: string[];
 }
 
 interface StaffLoginProps {
   onAuthenticated: (user: StaffUser) => Promise<void>;
+}
+
+interface PasswordInputProps {
+  value: string;
+  onChange: (value: string) => void;
+  autoComplete: string;
+  placeholder?: string;
+  minLength?: number;
+  maxLength?: number;
+  required?: boolean;
+}
+
+function PasswordInput({ value, onChange, autoComplete, placeholder, minLength, maxLength, required = true }: PasswordInputProps) {
+  const [visible, setVisible] = useState(false);
+
+  return <div className="relative mt-2">
+    <input
+      required={required}
+      type={visible ? "text" : "password"}
+      autoComplete={autoComplete}
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      placeholder={placeholder}
+      minLength={minLength}
+      maxLength={maxLength}
+      className="staff-login-input h-12 w-full rounded-xl border px-3.5 pr-12 text-sm font-normal"
+    />
+    <button
+      type="button"
+      onClick={() => setVisible((current) => !current)}
+      aria-label={visible ? "Hide password" : "Show password"}
+      aria-pressed={visible}
+      className="absolute inset-y-0 right-0 grid w-12 place-items-center text-slate-400 transition hover:text-slate-700"
+    >
+      {visible ? <EyeOff className="h-4.5 w-4.5" /> : <Eye className="h-4.5 w-4.5" />}
+    </button>
+  </div>;
 }
 
 const apiRequest = async <T,>(path: string, body: Record<string, string>) => {
@@ -149,7 +192,7 @@ export function StaffLogin({ onAuthenticated }: StaffLoginProps) {
                   <input required type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@company.com" className="staff-login-input mt-2 h-12 w-full rounded-xl border px-3.5 text-sm font-normal" />
                 </label>
                 <label className="staff-login-label block text-sm font-semibold">Bootstrap administrator key <span className="font-normal text-slate-400">(first account only)</span>
-                  <input type="password" autoComplete="off" value={adminKey} onChange={(event) => setAdminKey(event.target.value)} className="staff-login-input mt-2 h-12 w-full rounded-xl border px-3.5 text-sm font-normal" />
+                  <PasswordInput value={adminKey} onChange={setAdminKey} autoComplete="off" required={false} />
                 </label>
               </>}
               {mode === "login" && <>
@@ -157,7 +200,7 @@ export function StaffLogin({ onAuthenticated }: StaffLoginProps) {
                   <input required type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@company.com" className="staff-login-input mt-2 h-12 w-full rounded-xl border px-3.5 text-sm font-normal" />
                 </label>
                 <label className="staff-login-label block text-sm font-semibold">Password
-                  <input required type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Enter your password" className="staff-login-input mt-2 h-12 w-full rounded-xl border px-3.5 text-sm font-normal" />
+                  <PasswordInput value={password} onChange={setPassword} autoComplete="current-password" placeholder="Enter your password" maxLength={128} />
                 </label>
                 <button type="button" onClick={() => { setMode("forgot"); setError(""); setNotice(""); }} className="-mt-2 block w-full text-right text-sm font-semibold text-orange-700 hover:text-orange-800">
                   Forgot password?
@@ -168,7 +211,7 @@ export function StaffLogin({ onAuthenticated }: StaffLoginProps) {
               </label>}
               {(mode === "accept" || mode === "reset") && <>
                 <label className="staff-login-label block text-sm font-semibold">Create password
-                  <input required minLength={12} maxLength={128} type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 12 characters" className="staff-login-input mt-2 h-12 w-full rounded-xl border px-3.5 text-sm font-normal" />
+                  <PasswordInput value={password} onChange={setPassword} autoComplete="new-password" placeholder="At least 12 characters" minLength={12} maxLength={128} />
                 </label>
                 <p className="-mt-2 text-xs text-slate-500">Use at least 12 characters to keep your account secure.</p>
               </>}

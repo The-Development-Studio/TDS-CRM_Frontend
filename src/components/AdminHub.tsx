@@ -3,6 +3,7 @@ import { Check, Pencil, Plus, Shield, Trash2, X } from 'lucide-react';
 import { usePersistentState, isArrayOf } from '../hooks/usePersistentState';
 import { RecordEditorField, RecordEditorModal, RecordEditorValues } from './RecordEditorModal';
 import { formatINR } from '../utils/currency';
+import { StaffAccessManager } from './StaffAccessManager';
 
 type AdminRecord = RecordEditorValues & { id: string };
 type CustomRole = {
@@ -565,11 +566,11 @@ export const AdminHub: React.FC = () => {
 
       {activeTab === 'users' && (
         <div className="space-y-3">
+          <StaffAccessManager />
           <div className="flex gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
             <Shield className="h-4 w-4 shrink-0" />
             <p>
-              Staff roles and custom module access are configuration only. This does not create login accounts or enforce permissions;
-              connect an authentication service for those capabilities.
+              The roster and custom roles below are operational labels. Login accounts and enforced page permissions are managed above.
             </p>
           </div>
           <AdminTable

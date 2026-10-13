@@ -44,6 +44,11 @@ interface HeaderProps {
   amcRenewals: AMCRenewal[];
   accountName: string;
   accountEmail: string;
+  accountRole: string;
+  accountJobTitle: string;
+  allowedPages: string[];
+  onOpenProfile: () => void;
+  onSignOut: () => void;
   unreadCount?: number;
 }
 
@@ -62,6 +67,11 @@ export const Header: React.FC<HeaderProps> = ({
   amcRenewals,
   accountName,
   accountEmail,
+  accountRole,
+  accountJobTitle,
+  allowedPages,
+  onOpenProfile,
+  onSignOut,
   unreadCount = 3
 }) => {
   const [quickCreateOpen, setQuickCreateOpen] = useState(false);
@@ -106,13 +116,13 @@ export const Header: React.FC<HeaderProps> = ({
   }, []);
 
   const quickCreateOptions = [
-    { id: 'lead', label: 'New Lead', icon: User, color: 'text-indigo-400', desc: 'Capture customer inquiries' },
-    { id: 'opportunity', label: 'New Opportunity', icon: Briefcase, color: 'text-purple-400', desc: 'Deal pipeline entry' },
-    { id: 'activity', label: 'New Activity', icon: Calendar, color: 'text-emerald-400', desc: 'Call, meeting, or email' },
-    { id: 'proposal', label: 'New Proposal', icon: FileText, color: 'text-pink-400', desc: 'SOW / Quotation' },
-    { id: 'invoice', label: 'New Invoice', icon: Receipt, color: 'text-amber-400', desc: 'Proforma or Tax invoice' },
-    { id: 'amc', label: 'New AMC Contract', icon: RefreshCw, color: 'text-teal-400', desc: 'Register a renewal contract' }
-  ];
+    { id: 'lead', page: 'leads', label: 'New Lead', icon: User, color: 'text-indigo-400', desc: 'Capture customer inquiries' },
+    { id: 'opportunity', page: 'pipeline', label: 'New Opportunity', icon: Briefcase, color: 'text-purple-400', desc: 'Deal pipeline entry' },
+    { id: 'activity', page: 'activities', label: 'New Activity', icon: Calendar, color: 'text-emerald-400', desc: 'Call, meeting, or email' },
+    { id: 'proposal', page: 'proposals', label: 'New Proposal', icon: FileText, color: 'text-pink-400', desc: 'SOW / Quotation' },
+    { id: 'invoice', page: 'invoices', label: 'New Invoice', icon: Receipt, color: 'text-amber-400', desc: 'Proforma or Tax invoice' },
+    { id: 'amc', page: 'amc', label: 'New AMC Contract', icon: RefreshCw, color: 'text-teal-400', desc: 'Register a renewal contract' }
+  ].filter((option) => allowedPages.includes(option.page));
 
   const today = new Date().toISOString().slice(0, 10);
   const followUpReminders = activities
@@ -399,7 +409,7 @@ export const Header: React.FC<HeaderProps> = ({
               <div className="flex min-w-0 items-center gap-2">
                 <span className="truncate text-sm font-semibold leading-5 text-slate-900">{accountName}</span>
                 <span className="shrink-0 rounded border border-orange-500 bg-orange-50 px-1.5 py-px text-[10px] font-semibold uppercase leading-4 text-orange-600">
-                  Founder
+                  {accountRole}
                 </span>
               </div>
               <span className="max-w-56 truncate text-[13px] leading-4 text-slate-500">{accountEmail}</span>
@@ -411,24 +421,18 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="absolute right-0 mt-2 w-56 bg-[#111827] border border-slate-700 rounded-xl shadow-2xl p-1.5 z-50">
               <div className="px-3 py-2 border-b border-slate-800">
                 <p className="text-xs font-bold text-white">{accountName}</p>
-                <p className="text-[11px] text-slate-400">Role: Founder / Full Access</p>
+                <p className="text-[11px] text-slate-400">{accountJobTitle || `Role: ${accountRole}`}</p>
                 <div className="mt-1 flex items-center gap-1.5 text-[10px] text-emerald-400">
-                  <Shield className="w-3 h-3" /> Full Administrator Access
+                  <Shield className="w-3 h-3" /> {allowedPages.length} page{allowedPages.length === 1 ? '' : 's'} available
                 </div>
               </div>
               <div className="py-1">
-                <button className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 rounded">
-                  Personal Sales Quota ({formatINR(1200000)})
-                </button>
-                <button className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 rounded">
-                  Email & Calendar Sync
-                </button>
-                <button className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 rounded">
-                  Commercial Approvals
+                <button type="button" onClick={() => { onOpenProfile(); setProfileOpen(false); }} className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 rounded">
+                  My Profile
                 </button>
               </div>
               <div className="pt-1 border-t border-slate-800">
-                <button className="w-full text-left px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10 rounded font-medium">
+                <button type="button" onClick={onSignOut} className="w-full text-left px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10 rounded font-medium">
                   Sign Out
                 </button>
               </div>

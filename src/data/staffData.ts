@@ -1,5 +1,6 @@
 import { listStoredDocuments } from "./documentStore";
 import { listSharedDocuments, uploadSharedDocument } from "./sharedDocuments";
+import type { StaffUser } from "../components/StaffLogin";
 
 const collectionStorage = {
   leads: "tds-crm:v2:leads",
@@ -31,10 +32,21 @@ const request = async <T,>(url: string, init?: RequestInit): Promise<T> => {
   return result;
 };
 
-export const prepareStaffData = async () => {
+const resourcePages: Record<keyof typeof collectionStorage, string[]> = {
+  leads: ["leads", "portal"],
+  customers: ["customers", "portal"],
+  activities: ["activities"],
+  opportunities: ["pipeline"],
+  proposals: ["quotations", "proposals"],
+  invoices: ["proforma", "invoices", "payments"],
+  contracts: ["amc", "portal"]
+};
+
+export const prepareStaffData = async (staffUser: StaffUser) => {
   const importedKey = "tds-crm:v2:shared-imported";
   const importedDocumentsKey = "tds-crm:v2:shared-documents-imported";
-  if (localStorage.getItem(importedKey) !== "true") {
+  const hasPage = (page: string) => staffUser.role === "admin" || staffUser.pageAccess.includes(page);
+  if (staffUser.role === "admin" && localStorage.getItem(importedKey) !== "true") {
     for (const [resource, storageKey] of Object.entries(collectionStorage)) {
       const records = readLocalCollection(storageKey);
       for (let index = 0; index < records.length; index += 25) {
@@ -58,7 +70,7 @@ export const prepareStaffData = async () => {
     localStorage.setItem(importedKey, "true");
   }
 
-  if (localStorage.getItem(importedDocumentsKey) !== "true") {
+  if (hasPage("documents") && localStorage.getItem(importedDocumentsKey) !== "true") {
     if ("indexedDB" in window) {
       const [localDocuments, remoteDocuments] = await Promise.all([
         listStoredDocuments(),
@@ -83,12 +95,16 @@ export const prepareStaffData = async () => {
     localStorage.setItem(importedDocumentsKey, "true");
   }
 
-  const resources = Object.keys(collectionStorage);
+  const allResources = Object.keys(collectionStorage) as (keyof typeof collectionStorage)[];
+  const resources = allResources.filter((resource) => resourcePages[resource].some(hasPage));
+  allResources.filter((resource) => !resources.includes(resource)).forEach((resource) => {
+    localStorage.removeItem(collectionStorage[resource]);
+  });
   const remote = await Promise.all(resources.map((resource) =>
     request<{ data: Record<string, unknown>[] }>(`/api/${resource}?limit=10000`)
   ));
   remote.forEach(({ data }, index) => {
-    const storageKey = collectionStorage[resources[index] as keyof typeof collectionStorage];
+    const storageKey = collectionStorage[resources[index]];
     localStorage.setItem(storageKey, JSON.stringify(data));
   });
 
