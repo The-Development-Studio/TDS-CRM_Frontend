@@ -10,6 +10,7 @@ export interface StaffUser {
   jobTitle: string;
   department: string;
   phone: string;
+  active: boolean;
   profileCompleted: boolean;
   pageAccess: string[];
 }

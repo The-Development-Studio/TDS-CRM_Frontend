@@ -109,13 +109,6 @@ export const Lead360View: React.FC<Lead360ViewProps> = ({
       time: '09:15 AM',
       type: 'System'
     },
-    {
-      title: 'Assigned to Sales Lead',
-      desc: `Assigned to ${lead.leadOwner} for technical qualification & initial discovery call`,
-      date: lead.createdDate,
-      time: '10:00 AM',
-      type: 'System'
-    },
     ...leadActivities.map((act) => ({
       activityId: act.id,
       title: `${act.type}: ${act.title}`,

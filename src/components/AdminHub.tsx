@@ -420,22 +420,12 @@ const AdminTable: React.FC<AdminTableProps> = ({
   );
 };
 
-export const AdminHub: React.FC = () => {
+export const AdminHub: React.FC<{ onInviteStaff: () => void }> = ({ onInviteStaff }) => {
   const [activeTab, setActiveTab] = useState('services');
   const [services, setServices] = usePersistentState<AdminRecord[]>(
     'tds-crm:v2:admin-services',
     [],
     isArrayOf<AdminRecord>
-  );
-  const [users, setUsers] = usePersistentState<AdminRecord[]>(
-    'tds-crm:v2:admin-users',
-    [],
-    isArrayOf<AdminRecord>
-  );
-  const [customRoles, setCustomRoles] = usePersistentState<CustomRole[]>(
-    'tds-crm:v2:admin-custom-roles',
-    [],
-    isCustomRoleArray
   );
   const [taxRules, setTaxRules] = usePersistentState<AdminRecord[]>(
     'tds-crm:v2:admin-tax-rules',
@@ -453,48 +443,10 @@ export const AdminHub: React.FC = () => {
     isArrayOf<AdminRecord>
   );
 
-  const saveCustomRole = (role: CustomRole) => {
-    const existingRole = customRoles.find((item) => item.id === role.id);
-    setCustomRoles((current) => existingRole
-      ? current.map((item) => item.id === role.id ? role : item)
-      : [role, ...current]);
-    if (existingRole && existingRole.name !== role.name) {
-      setUsers((current) => current.map((user) =>
-        user.role === existingRole.name ? { ...user, role: role.name } : user
-      ));
-    }
-  };
-
-  const deleteCustomRole = (role: CustomRole) => {
-    if (users.some((user) => user.role === role.name)) {
-      window.alert('This role is assigned to one or more staff members. Reassign them before deleting the role.');
-      return;
-    }
-    if (window.confirm(`Delete role "${role.name}"? This cannot be undone.`)) {
-      setCustomRoles((current) => current.filter((item) => item.id !== role.id));
-    }
-  };
-
   const serviceFields: RecordEditorField[] = [
     { key: 'code', label: 'Service code', required: true },
     { key: 'name', label: 'Service name', required: true },
     { key: 'hourlyRate', label: 'Standard rate (INR/hr)', type: 'number', min: 0, required: true },
-    statusField
-  ];
-  const userFields: RecordEditorField[] = [
-    { key: 'name', label: 'Staff name', required: true },
-    { key: 'email', label: 'Email', type: 'email', required: true },
-    {
-      key: 'role',
-      label: 'Role',
-      type: 'select',
-      options: [
-        ...['Administrator', 'Sales Manager', 'Sales Representative', 'Finance', 'Read-only']
-          .map((role) => ({ label: role, value: role })),
-        ...customRoles.map((role) => ({ label: role.name, value: role.name }))
-      ],
-      required: true
-    },
     statusField
   ];
   const taxFields: RecordEditorField[] = [
@@ -525,7 +477,7 @@ export const AdminHub: React.FC = () => {
           </span>
         </div>
         <p className="mt-1 text-xs text-slate-400">
-          Manage service rates, user roster, tax rules, numbering sequences, and approval thresholds.
+          Manage service rates, staff login accounts, page access, tax rules, numbering sequences, and approval thresholds.
         </p>
       </header>
 
@@ -565,35 +517,7 @@ export const AdminHub: React.FC = () => {
       )}
 
       {activeTab === 'users' && (
-        <div className="space-y-3">
-          <StaffAccessManager />
-          <div className="flex gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
-            <Shield className="h-4 w-4 shrink-0" />
-            <p>
-              The roster and custom roles below are operational labels. Login accounts and enforced page permissions are managed above.
-            </p>
-          </div>
-          <AdminTable
-            title="Users & roles"
-            description="Maintain staff contact details and their assigned app roster role."
-            addLabel="Add user"
-            records={users}
-            columns={[
-              { key: 'name', label: 'Staff name' },
-              { key: 'email', label: 'Email' },
-              { key: 'role', label: 'Assigned role' },
-              { key: 'status', label: 'Status' }
-            ]}
-            fields={userFields}
-            onSave={setUsers}
-          />
-          <RoleManager
-            roles={customRoles}
-            assignedUsers={users}
-            onSave={saveCustomRole}
-            onDelete={deleteCustomRole}
-          />
-        </div>
+        <StaffAccessManager onInviteStaff={onInviteStaff} />
       )}
 
       {activeTab === 'commercial' && (

@@ -11,18 +11,20 @@ import {
   Sparkles,
   FileText
 } from 'lucide-react';
-import type { Lead } from '../types/crm';
+import type { Lead, StaffAssignee } from '../types/crm';
 
 interface NewLeadModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (lead: Partial<Lead>) => void;
+  assignees: StaffAssignee[];
 }
 
 export const NewLeadModal: React.FC<NewLeadModalProps> = ({
   isOpen,
   onClose,
-  onSubmit
+  onSubmit,
+  assignees
 }) => {
   const [formData, setFormData] = useState({
     name: '',
@@ -77,7 +79,7 @@ export const NewLeadModal: React.FC<NewLeadModalProps> = ({
       estimatedBudget: Number(formData.estimatedBudget),
       priority: formData.priority,
       leadOwner: formData.leadOwner.trim(),
-      status: 'New',
+      status: formData.leadOwner.trim() ? 'Assigned' : 'New',
       createdDate: new Date().toISOString().split('T')[0],
       nextFollowUp: formData.nextFollowUpDate,
       nextFollowUpTime: formData.nextFollowUpTime,
@@ -315,13 +317,14 @@ export const NewLeadModal: React.FC<NewLeadModalProps> = ({
                 <label className="text-[10px] uppercase font-bold text-slate-300 block mb-1">
                   Assign Lead Owner
                 </label>
-                <input
-                  type="text"
+                <select
                   value={formData.leadOwner}
                   onChange={(e) => setFormData({ ...formData, leadOwner: e.target.value })}
-                  placeholder="Owner name"
                   className="w-full bg-slate-900 border border-slate-700/80 rounded-xl p-2.5 text-white"
-                />
+                >
+                  <option value="">Unassigned</option>
+                  {assignees.map((assignee) => <option key={assignee.id} value={assignee.name}>{assignee.name} ({assignee.email})</option>)}
+                </select>
               </div>
 
               <div>

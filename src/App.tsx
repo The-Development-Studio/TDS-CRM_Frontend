@@ -15,7 +15,8 @@ import type {
   Opportunity,
   Proposal,
   Invoice,
-  AMCRenewal
+  AMCRenewal,
+  StaffAssignee
 } from './types/crm';
 import { loadOrganizationProfile, saveOrganizationProfile } from './data/organization';
 import type { OrganizationProfile } from './types/crm';
@@ -59,7 +60,7 @@ type EditableRecord =
   | { type: 'invoice'; record: Invoice }
   | { type: 'amc'; record: AMCRenewal };
 
-const getEditorConfig = (item: EditableRecord): { title: string; fields: RecordEditorField[] } => {
+const getEditorConfig = (item: EditableRecord, assignees: StaffAssignee[] = []): { title: string; fields: RecordEditorField[] } => {
   switch (item.type) {
     case 'lead':
       return {
@@ -79,7 +80,13 @@ const getEditorConfig = (item: EditableRecord): { title: string; fields: RecordE
           { key: 'campaign', label: 'Campaign' },
           { key: 'interestedService', label: 'Interested service', fullWidth: true },
           { key: 'estimatedBudget', label: 'Estimated budget (INR)', type: 'number', min: 0 },
-          { key: 'leadOwner', label: 'Lead owner' },
+          { key: 'leadOwner', label: 'Lead owner', type: 'select', options: [
+            { label: 'Unassigned', value: '' },
+            ...assignees.map((assignee) => ({ label: `${assignee.name} (${assignee.email})`, value: assignee.name })),
+            ...(item.record.leadOwner && !assignees.some((assignee) => assignee.name === item.record.leadOwner)
+              ? [{ label: `${item.record.leadOwner} (inactive)`, value: item.record.leadOwner }]
+              : [])
+          ] },
           { key: 'status', label: 'Status', type: 'select', options: [
             ...(['New', 'Assigned', 'Contacted', 'Requirement Collected', 'Qualified', 'Opportunity Created', 'Unqualified', 'Converted'] as const)
               .map((value) => ({ label: value, value }))
@@ -232,6 +239,7 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
   const [syncError, setSyncError] = useState('');
   const [showStaffInvite, setShowStaffInvite] = useState(false);
   const [showMyProfile, setShowMyProfile] = useState(false);
+  const [staffAssignees, setStaffAssignees] = useState<StaffAssignee[]>([]);
   const lastSyncedCollections = useRef<Record<string, unknown[]>>({});
   const syncQueue = useRef(Promise.resolve());
 
@@ -247,6 +255,17 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
     ['leads', 'customers', 'activities', 'opportunities', 'proposals', 'invoices', 'amc-renewals']
       .forEach((key) => localStorage.removeItem(`tds-crm:v1:${key}`));
   }, []);
+
+  useEffect(() => {
+    if (!allowedPages.includes('leads')) return;
+    fetch('/api/staff-auth/assignees', { credentials: 'include' })
+      .then(async (response) => {
+        const result = await response.json().catch(() => ({})) as { data?: StaffAssignee[]; error?: string };
+        if (!response.ok || !result.data) throw new Error(result.error || `Could not load lead owners (${response.status})`);
+        setStaffAssignees(result.data);
+      })
+      .catch((reason: unknown) => setSyncError(reason instanceof Error ? reason.message : 'Could not load lead owners.'));
+  }, [allowedPages]);
 
   useEffect(() => {
     if (!allowedPages.includes(pageForView(currentView))) setCurrentView(allowedPages[0] ?? 'dashboard');
@@ -378,6 +397,27 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
 
     switch (editingRecord.type) {
       case 'lead':
+        if ((record as Lead).leadOwner !== editingRecord.record.leadOwner) {
+          const owner = (record as Lead).leadOwner;
+          (record as Lead).status = owner
+            ? editingRecord.record.status === 'New' ? 'Assigned' : editingRecord.record.status
+            : editingRecord.record.status === 'Assigned' ? 'New' : editingRecord.record.status;
+          setActivities((current) => [{
+            id: `act-assignment-${Date.now()}`,
+            leadId: editingRecord.record.id,
+            leadName: (record as Lead).name,
+            company: (record as Lead).company,
+            type: 'System',
+            title: owner ? 'Lead assigned' : 'Lead unassigned',
+            description: owner ? `Assigned to ${owner} by ${staffUser.name}` : `Assignment removed by ${staffUser.name}`,
+            date: new Date().toISOString().split('T')[0],
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            user: staffUser.name,
+            priority: 'Medium',
+            status: 'Completed',
+            category: 'Today'
+          }, ...current]);
+        }
         setLeads((current) => current.some((item) => item.id === editingRecord.record.id)
           ? current.map((item) => item.id === editingRecord.record.id ? record as Lead : item)
           : [record as Lead, ...current]);
@@ -444,7 +484,31 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
 
   const handleBulkAssignLeads = (leadIds: string[], owner: string) => {
     const selectedIds = new Set(leadIds);
-    setLeads((current) => current.map((lead) => selectedIds.has(lead.id) ? { ...lead, leadOwner: owner } : lead));
+    const selected = leads.filter((lead) => selectedIds.has(lead.id));
+    setLeads((current) => current.map((lead) => selectedIds.has(lead.id)
+      ? { ...lead, leadOwner: owner, status: lead.status === 'New' ? 'Assigned' : lead.status }
+      : lead));
+    const assignedAt = Date.now();
+    const date = new Date().toISOString().split('T')[0];
+    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    setActivities((current) => [
+      ...selected.map((lead, index): Activity => ({
+        id: `act-assignment-${assignedAt}-${index}`,
+        leadId: lead.id,
+        leadName: lead.name,
+        company: lead.company,
+        type: 'System',
+        title: 'Lead assigned',
+        description: `Assigned to ${owner} by ${staffUser.name}`,
+        date,
+        time,
+        user: staffUser.name,
+        priority: 'Medium',
+        status: 'Completed',
+        category: 'Today'
+      })),
+      ...current
+    ]);
   };
 
   const handleDeleteLead = (lead: Lead) => {
@@ -514,9 +578,9 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
 
   const handleAddNewLead = (newLeadData: Partial<Lead>) => {
     const fullLead = newLeadData as Lead;
-    setLeads([fullLead, ...leads]);
-    // Also log an activity
-    setActivities([
+    setLeads((current) => [fullLead, ...current]);
+    const createdAt = Date.now();
+    const newActivities: Activity[] = [
       {
         id: `act-${Date.now()}`,
         leadId: fullLead.id,
@@ -527,13 +591,30 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
         description: `Lead created from source: ${fullLead.source}`,
         date: fullLead.createdDate,
         time: 'Just now',
-        user: fullLead.leadOwner,
+        user: staffUser.name,
         priority: fullLead.priority === 'Urgent' ? 'High' : fullLead.priority,
         status: 'Completed',
         category: 'Today'
-      },
-      ...activities
-    ]);
+      }
+    ];
+    if (fullLead.leadOwner) {
+      newActivities.push({
+        id: `act-assignment-${createdAt}`,
+        leadId: fullLead.id,
+        leadName: fullLead.name,
+        company: fullLead.company,
+        type: 'System',
+        title: 'Lead assigned',
+        description: `Assigned to ${fullLead.leadOwner} by ${staffUser.name}`,
+        date: fullLead.createdDate,
+        time: 'Just now',
+        user: staffUser.name,
+        priority: 'Medium',
+        status: 'Completed',
+        category: 'Today'
+      });
+    }
+    setActivities((current) => [...newActivities, ...current]);
   };
 
   const handleAddActivity = (activity: Partial<Activity>) => {
@@ -826,6 +907,7 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
           {currentView === 'leads' && (
             <LeadList
               leads={leads}
+              assignees={staffAssignees}
               onSelectLead={handleSelectLead}
               onOpenNewLeadModal={() => setIsNewLeadModalOpen(true)}
               onUpdateLeadStatus={handleUpdateLeadStatus}
@@ -922,7 +1004,7 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
             <AnalyticsHub leads={leads} opportunities={opportunities} invoices={invoices} />
           )}
 
-          {currentView === 'admin' && <AdminHub />}
+          {currentView === 'admin' && staffUser.role === 'admin' && <AdminHub onInviteStaff={() => setShowStaffInvite(true)} />}
 
           {currentView === 'org-setup' && (
             <OrganizationSetup profile={organization} onSave={handleSaveOrganization} />
@@ -962,6 +1044,7 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
         isOpen={isNewLeadModalOpen}
         onClose={() => setIsNewLeadModalOpen(false)}
         onSubmit={handleAddNewLead}
+        assignees={staffAssignees}
       />
       {portalInviteCustomer && (
         <CustomerPortalInviteModal
@@ -972,7 +1055,7 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
       {showStaffInvite && <StaffInviteModal onClose={() => setShowStaffInvite(false)} />}
       {showMyProfile && <MyProfile user={staffUser} onClose={() => setShowMyProfile(false)} onSaved={async (user) => { onStaffUserChange(user); setShowMyProfile(false); }} />}
       {editingRecord && (() => {
-        const editorConfig = getEditorConfig(editingRecord);
+        const editorConfig = getEditorConfig(editingRecord, staffAssignees);
         const editableFields = editingRecord.type === 'opportunity' &&
           ['Won', 'Lost'].includes(editingRecord.record.stage)
           ? editorConfig.fields.filter((field) => field.key !== 'amount')

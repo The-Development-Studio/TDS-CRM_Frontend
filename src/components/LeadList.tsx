@@ -23,7 +23,7 @@ import {
   Pencil,
   Trash2
 } from 'lucide-react';
-import type { Lead } from '../types/crm';
+import type { Lead, StaffAssignee } from '../types/crm';
 import { formatINR } from '../utils/currency';
 
 interface LeadListProps {
@@ -34,6 +34,7 @@ interface LeadListProps {
   onBulkAssign: (leadIds: string[], owner: string) => void;
   onEditLead: (lead: Lead) => void;
   onDeleteLead: (lead: Lead) => void;
+  assignees: StaffAssignee[];
 }
 
 export const LeadList: React.FC<LeadListProps> = ({
@@ -43,7 +44,8 @@ export const LeadList: React.FC<LeadListProps> = ({
   onUpdateLeadStatus,
   onBulkAssign,
   onEditLead,
-  onDeleteLead
+  onDeleteLead,
+  assignees
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('All');
@@ -242,13 +244,15 @@ export const LeadList: React.FC<LeadListProps> = ({
                 </div>
               )}
             </div>
-            <input
+            <select
               aria-label="Assign selected leads to"
               value={bulkAssignOwner}
               onChange={(event) => setBulkAssignOwner(event.target.value)}
-              placeholder="Owner name"
               className="max-w-36 rounded border border-slate-700 bg-slate-800 px-2 py-1 text-[10px] text-white"
-            />
+            >
+              <option value="">Select owner</option>
+              {assignees.map((assignee) => <option key={assignee.id} value={assignee.name}>{assignee.name}</option>)}
+            </select>
             <button
               onClick={() => {
                 if (!bulkAssignOwner.trim()) return;

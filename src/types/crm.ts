@@ -23,6 +23,12 @@ export interface Lead {
   notes: string[];
 }
 
+export interface StaffAssignee {
+  id: string;
+  name: string;
+  email: string;
+}
+
 export interface Customer {
   id: string;
   customerCode: string;
