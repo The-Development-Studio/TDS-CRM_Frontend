@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
-import { Save, X } from 'lucide-react';
+import { Plus, Save, Trash2, X } from 'lucide-react';
+import type { CommercialLineItem } from '../types/crm';
+import { formatINR } from '../utils/currency';
 
-export type RecordEditorValues = Record<string, string | number>;
+export type RecordEditorValues = Record<string, string | number | CommercialLineItem[]>;
 
 export interface RecordEditorField {
   key: string;
   label: string;
-  type?: 'text' | 'email' | 'tel' | 'date' | 'number' | 'url' | 'select' | 'textarea';
+  type?: 'text' | 'email' | 'tel' | 'date' | 'number' | 'url' | 'select' | 'textarea' | 'line-items';
   options?: Array<{ label: string; value: string }>;
   required?: boolean;
   min?: number;
@@ -34,6 +36,10 @@ export const RecordEditorModal: React.FC<RecordEditorModalProps> = ({
 
   const updateField = (key: string, value: string | number) => {
     setDraft((current) => ({ ...current, [key]: value }));
+  };
+
+  const updateLineItems = (key: string, items: CommercialLineItem[]) => {
+    setDraft((current) => ({ ...current, [key]: items }));
   };
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
@@ -79,7 +85,27 @@ export const RecordEditorModal: React.FC<RecordEditorModalProps> = ({
                 <label htmlFor={id} className="block text-xs font-semibold text-slate-700">
                   {field.label}{field.required ? ' *' : ''}
                 </label>
-                {field.type === 'textarea' ? (
+                {field.type === 'line-items' ? (() => {
+                  const items = Array.isArray(draft[field.key]) ? draft[field.key] as CommercialLineItem[] : [];
+                  return <div className="mt-2 overflow-hidden rounded-xl border border-slate-200">
+                    <div className="grid grid-cols-[minmax(180px,1fr)_90px_80px_110px_36px] gap-2 bg-slate-50 px-3 py-2 text-[10px] font-bold uppercase text-slate-500">
+                      <span>Description</span><span>HSN / SAC</span><span className="text-right">Qty</span><span className="text-right">Rate</span><span />
+                    </div>
+                    <div className="divide-y divide-slate-100">
+                      {items.map((item, index) => <div key={item.id} className="grid grid-cols-[minmax(180px,1fr)_90px_80px_110px_36px] gap-2 px-3 py-2">
+                        <input required value={item.description} onChange={(event) => updateLineItems(field.key, items.map((current, itemIndex) => itemIndex === index ? { ...current, description: event.target.value } : current))} placeholder="Service or item" className="rounded-md border border-slate-200 px-2 py-1.5 text-xs outline-none focus:border-[#ff6600]" />
+                        <input value={item.hsnSac} onChange={(event) => updateLineItems(field.key, items.map((current, itemIndex) => itemIndex === index ? { ...current, hsnSac: event.target.value } : current))} placeholder="9983" className="rounded-md border border-slate-200 px-2 py-1.5 text-xs outline-none focus:border-[#ff6600]" />
+                        <input required type="number" min="0.01" step="0.01" value={item.quantity} onChange={(event) => updateLineItems(field.key, items.map((current, itemIndex) => itemIndex === index ? { ...current, quantity: Number(event.target.value) } : current))} className="rounded-md border border-slate-200 px-2 py-1.5 text-right text-xs outline-none focus:border-[#ff6600]" />
+                        <input required type="number" min="0" step="0.01" value={item.rate} onChange={(event) => updateLineItems(field.key, items.map((current, itemIndex) => itemIndex === index ? { ...current, rate: Number(event.target.value) } : current))} className="rounded-md border border-slate-200 px-2 py-1.5 text-right text-xs outline-none focus:border-[#ff6600]" />
+                        <button type="button" disabled={items.length === 1} onClick={() => updateLineItems(field.key, items.filter((_, itemIndex) => itemIndex !== index))} aria-label={`Remove line item ${index + 1}`} className="grid place-items-center rounded-md text-slate-400 hover:bg-rose-50 hover:text-rose-500 disabled:opacity-30"><Trash2 className="h-3.5 w-3.5" /></button>
+                      </div>)}
+                    </div>
+                    <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-3 py-2">
+                      <button type="button" onClick={() => updateLineItems(field.key, [...items, { id: crypto.randomUUID(), description: '', hsnSac: '', quantity: 1, rate: 0 }])} className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#d94f00] hover:text-[#b94000]"><Plus className="h-3.5 w-3.5" /> Add line item</button>
+                      <span className="text-xs font-bold text-slate-800">Subtotal: {formatINR(items.reduce((sum, item) => sum + item.quantity * item.rate, 0))}</span>
+                    </div>
+                  </div>;
+                })() : field.type === 'textarea' ? (
                   <textarea
                     id={id}
                     value={String(draft[field.key] ?? '')}
@@ -104,7 +130,7 @@ export const RecordEditorModal: React.FC<RecordEditorModalProps> = ({
                   <input
                     id={id}
                     type={field.type ?? 'text'}
-                    value={draft[field.key] ?? ''}
+                    value={(draft[field.key] as string | number | undefined) ?? ''}
                     onChange={(event) =>
                       updateField(field.key, field.type === 'number' && event.target.value !== ''
                         ? Number(event.target.value)

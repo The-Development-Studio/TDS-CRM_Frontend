@@ -7,6 +7,7 @@ import { StaffLogin, StaffUser } from './components/StaffLogin';
 import { StaffInviteModal } from './components/StaffInviteModal';
 import { MyProfile } from './components/MyProfile';
 import { NewLeadModal } from './components/NewLeadModal';
+import { WhatsAppComposerModal, WhatsAppRecipient } from './components/WhatsAppComposerModal';
 import { RecordEditorField, RecordEditorModal, RecordEditorValues } from './components/RecordEditorModal';
 import type {
   Lead,
@@ -15,6 +16,7 @@ import type {
   Opportunity,
   Proposal,
   Invoice,
+  PaymentRecord,
   AMCRenewal,
   StaffAssignee
 } from './types/crm';
@@ -23,6 +25,7 @@ import type { OrganizationProfile } from './types/crm';
 import { isArrayOf, usePersistentState } from './hooks/usePersistentState';
 import { prepareStaffData } from './data/staffData';
 import { allPageAccessIds, pageForView } from './data/pageAccess';
+import { calculateGst, isValidGstin } from './utils/gst';
 
 const Dashboard = lazy(() => import('./components/Dashboard').then(({ Dashboard }) => ({ default: Dashboard })));
 const ActivitiesHub = lazy(() => import('./components/ActivitiesHub').then(({ ActivitiesHub }) => ({ default: ActivitiesHub })));
@@ -88,7 +91,7 @@ const getEditorConfig = (item: EditableRecord, assignees: StaffAssignee[] = []):
               : [])
           ] },
           { key: 'status', label: 'Status', type: 'select', options: [
-            ...(['New', 'Assigned', 'Contacted', 'Requirement Collected', 'Qualified', 'Opportunity Created', 'Unqualified', 'Converted'] as const)
+            ...(['New', 'Assigned', 'Contacted', 'Requirement Collected', 'Qualified', 'Opportunity Created', 'Won', 'Unqualified', 'Converted'] as const)
               .map((value) => ({ label: value, value }))
           ] },
           { key: 'priority', label: 'Priority', type: 'select', options: [
@@ -115,6 +118,9 @@ const getEditorConfig = (item: EditableRecord, assignees: StaffAssignee[] = []):
           { key: 'email', label: 'Email', type: 'email' },
           { key: 'phone', label: 'Phone', type: 'tel' },
           { key: 'city', label: 'City' },
+          { key: 'customerGstin', label: 'Customer GSTIN' },
+          { key: 'state', label: 'Registered state / UT' },
+          { key: 'billingAddress', label: 'GST billing address', type: 'textarea', fullWidth: true },
           { key: 'totalDealsValue', label: 'Lifetime deals (INR)', type: 'number', min: 0 },
           { key: 'activeContracts', label: 'Active contracts', type: 'number', min: 0 },
           { key: 'amcStatus', label: 'AMC status', type: 'select', options: [
@@ -164,18 +170,24 @@ const getEditorConfig = (item: EditableRecord, assignees: StaffAssignee[] = []):
       return {
         title: 'Edit draft quotation / SOW',
         fields: [
+          { key: 'documentType', label: 'Document type', type: 'select', options: [
+            { label: 'Quotation', value: 'Quotation' },
+            { label: 'Proposal / SOW', value: 'Proposal' }
+          ], required: true },
           { key: 'proposalNumber', label: 'Document number', required: true },
           { key: 'title', label: 'Document title', required: true, fullWidth: true },
           { key: 'service', label: 'Service' },
-          { key: 'amount', label: 'Value (INR)', type: 'number', min: 0 },
+          { key: 'lineItems', label: 'Line items', type: 'line-items', fullWidth: true, required: true },
           { key: 'sentDate', label: 'Issue date', type: 'date' },
           { key: 'validUntil', label: 'Valid until', type: 'date' },
+          { key: 'customerNotes', label: 'Customer notes', type: 'textarea', fullWidth: true },
+          { key: 'terms', label: 'Terms and conditions', type: 'textarea', fullWidth: true },
           { key: 'status', label: 'Status', type: 'select', options: [{ label: 'Draft', value: 'Draft' }] }
         ]
       };
     case 'invoice':
       return {
-        title: item.record.paidAmount > 0 ? 'Edit invoice details' : 'Edit invoice',
+        title: item.record.type === 'Proforma' ? 'Proforma invoice' : 'GST tax invoice',
         fields: [
           { key: 'invoiceNo', label: 'Invoice number', required: true },
           { key: 'type', label: 'Document type', type: 'select', options: [
@@ -183,15 +195,40 @@ const getEditorConfig = (item: EditableRecord, assignees: StaffAssignee[] = []):
             { label: 'Proforma Invoice', value: 'Proforma' }
           ] },
           { key: 'customer', label: 'Customer', required: true },
-          { key: 'amount', label: 'Invoice value (INR)', type: 'number', min: 0 },
+          { key: 'customerGstin', label: 'Customer GSTIN' },
+          { key: 'billingAddress', label: 'Billing address', type: 'textarea', fullWidth: true },
+          { key: 'description', label: 'Service description', type: 'textarea', fullWidth: true, required: true },
+          { key: 'purchaseOrderNumber', label: 'Purchase order number' },
+          { key: 'sacCode', label: 'SAC / HSN code', required: item.record.type === 'Tax Invoice' },
+          { key: 'placeOfSupply', label: 'Place of supply (State & code)', required: item.record.type === 'Tax Invoice' },
+          { key: 'supplyType', label: 'Nature of supply', type: 'select', options: [
+            { label: 'Intra-state (CGST + SGST)', value: 'Intra-state' },
+            { label: 'Inter-state (IGST)', value: 'Inter-state' },
+            { label: 'Export / SEZ (zero-rated)', value: 'Export/SEZ' }
+          ], required: true },
+          { key: 'lineItems', label: 'Invoice line items', type: 'line-items', fullWidth: true, required: true },
+          { key: 'discount', label: 'Discount (INR)', type: 'number', min: 0 },
+          { key: 'gstRate', label: 'GST rate', type: 'select', options: [0, 5, 12, 18, 28].map((rate) => ({ label: `${rate}%`, value: String(rate) })), required: true },
+          { key: 'reverseCharge', label: 'Reverse charge', type: 'select', options: [
+            { label: 'No', value: 'No' }, { label: 'Yes', value: 'Yes' }
+          ], required: true },
           ...(item.record.paidAmount === 0 ? [
             { key: 'status', label: 'Status', type: 'select' as const, options: [
+              { label: 'Draft', value: 'Draft' },
+              { label: 'Sent', value: 'Sent' },
               { label: 'Outstanding', value: 'Outstanding' },
               { label: 'Overdue', value: 'Overdue' }
             ] }
           ] : []),
           { key: 'issueDate', label: 'Issue date', type: 'date' },
-          { key: 'dueDate', label: 'Due date', type: 'date' }
+          { key: 'dueDate', label: 'Due date', type: 'date' },
+          { key: 'customerNotes', label: 'Customer notes', type: 'textarea', fullWidth: true },
+          { key: 'terms', label: 'Terms and conditions', type: 'textarea', fullWidth: true },
+          ...(item.record.type === 'Tax Invoice' ? [
+            { key: 'irn', label: 'Invoice Reference Number (IRN)', fullWidth: true },
+            { key: 'acknowledgementNumber', label: 'IRP acknowledgement number' },
+            { key: 'acknowledgementDate', label: 'IRP acknowledgement date', type: 'date' as const }
+          ] : [])
         ]
       };
     case 'amc':
@@ -234,11 +271,13 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
   const [opportunities, setOpportunities] = usePersistentState<Opportunity[]>('tds-crm:v2:opportunities', [], isArrayOf<Opportunity>);
   const [proposals, setProposals] = usePersistentState<Proposal[]>('tds-crm:v2:proposals', [], isArrayOf<Proposal>);
   const [invoices, setInvoices] = usePersistentState<Invoice[]>('tds-crm:v2:invoices', [], isArrayOf<Invoice>);
+  const [payments, setPayments] = usePersistentState<PaymentRecord[]>('tds-crm:v2:payments', [], isArrayOf<PaymentRecord>);
   const [amcRenewals, setAmcRenewals] = usePersistentState<AMCRenewal[]>('tds-crm:v2:amc-renewals', [], isArrayOf<AMCRenewal>);
   const [organization, setOrganization] = useState<OrganizationProfile>(loadOrganizationProfile);
   const [syncError, setSyncError] = useState('');
   const [showStaffInvite, setShowStaffInvite] = useState(false);
   const [showMyProfile, setShowMyProfile] = useState(false);
+  const [whatsAppRecipient, setWhatsAppRecipient] = useState<WhatsAppRecipient | null>(null);
   const [staffAssignees, setStaffAssignees] = useState<StaffAssignee[]>([]);
   const lastSyncedCollections = useRef<Record<string, unknown[]>>({});
   const syncQueue = useRef(Promise.resolve());
@@ -252,7 +291,7 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
   const currentCustomer = customers.find((customer) => customer.id === selectedCustomerId);
 
   useEffect(() => {
-    ['leads', 'customers', 'activities', 'opportunities', 'proposals', 'invoices', 'amc-renewals']
+    ['leads', 'customers', 'activities', 'opportunities', 'proposals', 'invoices', 'payments', 'amc-renewals']
       .forEach((key) => localStorage.removeItem(`tds-crm:v1:${key}`));
   }, []);
 
@@ -279,6 +318,7 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
       opportunities,
       proposals,
       invoices,
+      payments,
       contracts: amcRenewals
     };
     const previous = lastSyncedCollections.current;
@@ -328,7 +368,7 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
         .then(() => setSyncError(''))
         .catch((reason: unknown) => setSyncError(reason instanceof Error ? reason.message : 'CRM data sync failed.'));
     }
-  }, [leads, customers, activities, opportunities, proposals, invoices, amcRenewals]);
+  }, [leads, customers, activities, opportunities, proposals, invoices, payments, amcRenewals]);
 
   useEffect(() => {
     mainContentRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
@@ -423,9 +463,18 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
           : [record as Lead, ...current]);
         break;
       case 'customer':
-        setCustomers((current) => current.some((item) => item.id === editingRecord.record.id)
-          ? current.map((item) => item.id === editingRecord.record.id ? record as Customer : item)
-          : [record as Customer, ...current]);
+        {
+          const customer = record as Customer;
+          const customerGstin = customer.customerGstin?.trim().toUpperCase() ?? '';
+          if (!isValidGstin(customerGstin)) {
+            alert('Enter a valid 15-character GSTIN, or leave it blank for an unregistered customer.');
+            return;
+          }
+          const normalizedCustomer = { ...customer, customerGstin };
+          setCustomers((current) => current.some((item) => item.id === editingRecord.record.id)
+            ? current.map((item) => item.id === editingRecord.record.id ? normalizedCustomer : item)
+            : [normalizedCustomer, ...current]);
+        }
         break;
       case 'activity':
         setActivities((current) => current.some((item) => item.id === editingRecord.record.id)
@@ -438,15 +487,46 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
           : [record as Opportunity, ...current]);
         break;
       case 'proposal':
-        setProposals((current) => current.some((item) => item.id === editingRecord.record.id)
-          ? current.map((item) => item.id === editingRecord.record.id ? record as Proposal : item)
-          : [record as Proposal, ...current]);
+        {
+          const proposal = record as Proposal;
+          const prefix = proposal.documentType === 'Quotation' ? 'QTN' : 'PROP';
+          const suffix = proposal.proposalNumber.replace(/^(QTN|PROP|SOW)-/, '');
+          const lineItems = proposal.lineItems?.length ? proposal.lineItems : [{ id: crypto.randomUUID(), description: proposal.service || proposal.title, hsnSac: '', quantity: 1, rate: Number(proposal.amount || 0) }];
+          const normalizedProposal = { ...proposal, lineItems, amount: lineItems.reduce((sum, item) => sum + item.quantity * item.rate, 0), proposalNumber: `${prefix}-${suffix}` };
+          setProposals((current) => current.some((item) => item.id === editingRecord.record.id)
+            ? current.map((item) => item.id === editingRecord.record.id ? normalizedProposal : item)
+            : [normalizedProposal, ...current]);
+        }
         break;
       case 'invoice': {
         const invoice = record as Invoice;
+        const lineItems = invoice.lineItems?.length ? invoice.lineItems : [{ id: crypto.randomUUID(), description: invoice.description || 'Professional services', hsnSac: invoice.sacCode || '9983', quantity: 1, rate: Number(invoice.taxableAmount ?? 0) }];
+        const taxableAmount = lineItems.reduce((sum, item) => sum + item.quantity * item.rate, 0);
+        const customerGstin = invoice.customerGstin?.trim().toUpperCase() ?? '';
+        if (!isValidGstin(customerGstin)) {
+          alert('Enter a valid 15-character GSTIN, or leave the GSTIN blank for an unregistered customer.');
+          return;
+        }
+        const gst = calculateGst({
+          taxableAmount,
+          discount: Number(invoice.discount ?? 0),
+          gstRate: Number(invoice.gstRate ?? 0),
+          supplyType: invoice.supplyType ?? 'Intra-state',
+          reverseCharge: invoice.reverseCharge ?? 'No'
+        });
         const invoiceNumberSuffix = invoice.invoiceNo.replace(/^(INV|PI)-/, '');
         const normalizedInvoice = {
           ...invoice,
+          lineItems,
+          customerGstin,
+          gstRate: Number(invoice.gstRate ?? 0),
+          taxableAmount,
+          discount: Number(invoice.discount ?? 0),
+          cgstAmount: gst.cgst,
+          sgstAmount: gst.sgst,
+          igstAmount: gst.igst,
+          totalTax: gst.totalTax,
+          amount: gst.grandTotal,
           invoiceNo: `${invoice.type === 'Proforma' ? 'PI' : 'INV'}-${invoiceNumberSuffix}`
         };
         setInvoices((current) => current.some((item) => item.id === editingRecord.record.id)
@@ -569,6 +649,96 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
     }
   };
 
+  const handleUpdateProposalStatus = (proposal: Proposal, status: Proposal['status']) => {
+    setProposals((current) => current.map((item) => item.id === proposal.id ? { ...item, status } : item));
+  };
+
+  const handleConvertProposalToInvoice = (proposal: Proposal, type: Invoice['type'] = 'Proforma') => {
+    const lead = leads.find((item) => item.id === proposal.leadId);
+    const customer = customers.find((item) => item.companyName.toLowerCase() === (lead?.company ?? '').toLowerCase());
+    const prefix = type === 'Proforma' ? 'PI' : 'INV';
+    const taxableAmount = proposal.amount;
+    const supplyType: Invoice['supplyType'] = customer?.state && organization.state && customer.state.toLowerCase() !== organization.state.toLowerCase() ? 'Inter-state' : 'Intra-state';
+    const gst = calculateGst({ taxableAmount, gstRate: 18, supplyType });
+    const invoice: Invoice = {
+      id: `inv-${Date.now()}`,
+      invoiceNo: `${prefix}-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`,
+      customer: lead?.company ?? '',
+      type,
+      taxableAmount,
+      discount: 0,
+      gstRate: 18,
+      supplyType,
+      placeOfSupply: customer?.state || organization.state,
+      customerGstin: customer?.customerGstin || '',
+      billingAddress: customer?.billingAddress || '',
+      reverseCharge: 'No',
+      description: proposal.title,
+      sacCode: '9983',
+      lineItems: proposal.lineItems?.length ? proposal.lineItems : [{ id: crypto.randomUUID(), description: proposal.service || proposal.title, hsnSac: '9983', quantity: 1, rate: proposal.amount }],
+      customerNotes: proposal.customerNotes,
+      terms: proposal.terms || organization.paymentTerms,
+      cgstAmount: gst.cgst,
+      sgstAmount: gst.sgst,
+      igstAmount: gst.igst,
+      totalTax: gst.totalTax,
+      amount: gst.grandTotal,
+      paidAmount: 0,
+      status: 'Draft',
+      issueDate: new Date().toISOString().split('T')[0],
+      dueDate: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0]
+    };
+    setEditingRecord({ type: 'invoice', record: invoice });
+    setCurrentView(type === 'Proforma' ? 'proforma' : 'invoices');
+  };
+
+  const handleConvertProformaToTaxInvoice = (source: Invoice) => {
+    const invoice: Invoice = {
+      ...source,
+      id: `inv-${Date.now()}`,
+      invoiceNo: `INV-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`,
+      type: 'Tax Invoice',
+      paidAmount: 0,
+      status: 'Draft',
+      issueDate: new Date().toISOString().split('T')[0]
+    };
+    setEditingRecord({ type: 'invoice', record: invoice });
+    setCurrentView('invoices');
+  };
+
+  const handleRecordPayment = (invoice: Invoice, amount: number, reference: string, mode: PaymentRecord['mode'], paymentDate: string, notes: string) => {
+    if (invoice.type !== 'Tax Invoice' || invoice.status === 'Voided' || amount <= 0) return;
+    setInvoices((current) => current.map((item) => {
+      if (item.id !== invoice.id) return item;
+      const paidAmount = Math.min(item.amount, item.paidAmount + amount);
+      return {
+        ...item,
+        paidAmount,
+        status: paidAmount >= item.amount ? 'Paid' : 'Partially Paid',
+        paymentReference: reference,
+        paymentMode: mode,
+        paymentDate
+      };
+    }));
+    setPayments((current) => [{
+      id: `payment-${Date.now()}`,
+      paymentNumber: `PAY-${new Date().getFullYear()}-${Date.now().toString().slice(-6)}`,
+      invoiceId: invoice.id,
+      invoiceNo: invoice.invoiceNo,
+      customer: invoice.customer,
+      paymentDate,
+      amount,
+      mode,
+      reference,
+      notes
+    }, ...current]);
+  };
+
+  const handleUpdateInvoiceStatus = (invoice: Invoice, status: Invoice['status']) => {
+    if (invoice.status === 'Voided' || invoice.status === 'Paid') return;
+    setInvoices((current) => current.map((item) => item.id === invoice.id ? { ...item, status } : item));
+  };
+
   const handleCancelContract = (contract: AMCRenewal) => {
     if (contract.status === 'Cancelled') return;
     if (window.confirm(`Mark contract ${contract.contractNo} as cancelled? The record will be retained for history.`)) {
@@ -617,6 +787,49 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
     setActivities((current) => [...newActivities, ...current]);
   };
 
+  const handleImportLeads = (importedLeads: Lead[]) => {
+    const existingIds = new Set(leads.map((lead) => lead.id.toLowerCase()));
+    const existingEmails = new Set(leads.map((lead) => lead.email.trim().toLowerCase()).filter(Boolean));
+    const existingPhones = new Set(leads.map((lead) => lead.phone.replace(/\D/g, '')).filter(Boolean));
+    const accepted: Lead[] = [];
+    let skipped = 0;
+    importedLeads.forEach((lead) => {
+      const id = lead.id.toLowerCase();
+      const email = lead.email.trim().toLowerCase();
+      const phone = lead.phone.replace(/\D/g, '');
+      if (existingIds.has(id) || (email && existingEmails.has(email)) || (phone && existingPhones.has(phone))) {
+        skipped += 1;
+        return;
+      }
+      existingIds.add(id);
+      if (email) existingEmails.add(email);
+      if (phone) existingPhones.add(phone);
+      accepted.push(lead);
+    });
+    if (accepted.length) {
+      setLeads((current) => [...accepted, ...current]);
+      setActivities((current) => [
+        ...accepted.map((lead, index): Activity => ({
+          id: `act-import-${Date.now()}-${index}`,
+          leadId: lead.id,
+          leadName: lead.name,
+          company: lead.company,
+          type: 'System',
+          title: 'Lead imported from CSV',
+          description: `Imported with status ${lead.status}`,
+          date: new Date().toISOString().split('T')[0],
+          time: 'Just now',
+          user: staffUser.name,
+          priority: 'Medium',
+          status: 'Completed',
+          category: 'Today'
+        })),
+        ...current
+      ]);
+    }
+    return { imported: accepted.length, skipped };
+  };
+
   const handleAddActivity = (activity: Partial<Activity>) => {
     const newAct: Activity = {
       id: `act-${Date.now()}`,
@@ -637,6 +850,14 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
   };
 
   const handleConvertToCustomer = (lead: Lead) => {
+    if (lead.status !== 'Won') {
+      alert('Only leads with Won status can be converted to customers.');
+      return;
+    }
+    if (customers.some((customer) => customer.email && customer.email.toLowerCase() === lead.email.toLowerCase())) {
+      alert('A customer with this email address already exists.');
+      return;
+    }
     // 1. Mark lead as Converted
     handleUpdateLeadStatus(lead.id, 'Converted');
 
@@ -656,6 +877,9 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
       renewalDate: '2025-09-30',
       relationshipManager: lead.leadOwner,
       city: 'Global Client'
+      ,customerGstin: ''
+      ,billingAddress: ''
+      ,state: ''
     };
     setCustomers([newCust, ...customers]);
 
@@ -680,16 +904,22 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
   };
 
   const handleCreateProposalFromLead = (lead: Lead, destination: 'proposals' | 'quotations' = 'proposals') => {
+    const documentType: Proposal['documentType'] = destination === 'quotations' ? 'Quotation' : 'Proposal';
+    const prefix = documentType === 'Quotation' ? 'QTN' : 'PROP';
     const proposal: Proposal = {
       id: `prop-${Date.now()}`,
-      proposalNumber: `PROP-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`,
+      proposalNumber: `${prefix}-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`,
       leadId: lead.id,
-      title: `${lead.company} ${lead.interestedService} Proposal`.trim(),
+      title: `${lead.company} ${lead.interestedService} ${documentType}`.trim(),
       service: lead.interestedService,
       amount: lead.estimatedBudget,
       status: 'Draft',
       sentDate: new Date().toISOString().slice(0, 10),
-      validUntil: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10)
+      validUntil: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
+      documentType,
+      lineItems: [{ id: crypto.randomUUID(), description: lead.interestedService || 'Professional services', hsnSac: '9983', quantity: 1, rate: lead.estimatedBudget }],
+      customerNotes: 'Thank you for the opportunity to submit this quotation.',
+      terms: organization.paymentTerms || 'Prices are valid until the validity date shown above.'
     };
     setEditingRecord({ type: 'proposal', record: proposal });
     setCurrentView(destination);
@@ -709,8 +939,8 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
     );
   };
 
-  const handleCreateInvoice = (invoiceType: Invoice['type'] = 'Tax Invoice') => {
-    const customer = customers[0];
+  const handleCreateInvoice = (invoiceType: Invoice['type'] = 'Tax Invoice', selectedCustomer?: Customer) => {
+    const customer = selectedCustomer ?? customers[0];
     const prefix = invoiceType === 'Proforma' ? 'PI' : 'INV';
     const newInv: Invoice = {
       id: `inv-${Date.now()}`,
@@ -719,9 +949,27 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
       type: invoiceType,
       amount: 0,
       paidAmount: 0,
-      status: 'Outstanding',
+      status: 'Draft',
       dueDate: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
-      issueDate: new Date().toISOString().split('T')[0]
+      issueDate: new Date().toISOString().split('T')[0],
+      description: '',
+      sacCode: '9983',
+      taxableAmount: 0,
+      discount: 0,
+      gstRate: 18,
+      supplyType: customer?.state && organization.state && customer.state.toLowerCase() !== organization.state.toLowerCase() ? 'Inter-state' : 'Intra-state',
+      placeOfSupply: customer?.state || organization.state,
+      customerGstin: customer?.customerGstin || '',
+      billingAddress: customer?.billingAddress || '',
+      reverseCharge: 'No',
+      cgstAmount: 0,
+      sgstAmount: 0,
+      igstAmount: 0,
+      totalTax: 0,
+      lineItems: [{ id: crypto.randomUUID(), description: 'Professional services', hsnSac: '9983', quantity: 1, rate: 0 }],
+      purchaseOrderNumber: '',
+      customerNotes: 'Thank you for your business.',
+      terms: organization.paymentTerms || 'Payment is due by the due date shown above.'
     };
     setEditingRecord({ type: 'invoice', record: newInv });
     setCurrentView(invoiceType === 'Proforma' ? 'proforma' : 'invoices');
@@ -791,6 +1039,9 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
         renewalDate: new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0],
         relationshipManager: organization.founderName,
         city: ''
+        ,customerGstin: ''
+        ,billingAddress: ''
+        ,state: ''
       };
       setEditingRecord({ type: 'customer', record: newCustomer });
       setCurrentView('customers');
@@ -800,6 +1051,7 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
   const commercialPageProps = {
     proposals,
     invoices,
+    payments,
     leads,
     organization,
     onNewProposal: () => handleQuickCreate('proposal'),
@@ -808,8 +1060,13 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
       if (record.status === 'Draft') setEditingRecord({ type: 'proposal', record });
     },
     onDeleteProposal: handleDeleteProposal,
+    onUpdateProposalStatus: handleUpdateProposalStatus,
+    onConvertProposalToInvoice: handleConvertProposalToInvoice,
     onEditInvoice: handleEditInvoice,
-    onVoidInvoice: handleVoidInvoice
+    onVoidInvoice: handleVoidInvoice,
+    onConvertProformaToTaxInvoice: handleConvertProformaToTaxInvoice,
+    onRecordPayment: handleRecordPayment,
+    onUpdateInvoiceStatus: handleUpdateInvoiceStatus
   };
 
   return (
@@ -908,12 +1165,14 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
             <LeadList
               leads={leads}
               assignees={staffAssignees}
+              onOpenWhatsApp={(lead) => setWhatsAppRecipient({ name: lead.name, company: lead.company, phone: lead.whatsapp || lead.phone, service: lead.interestedService, owner: lead.leadOwner || staffUser.name })}
               onSelectLead={handleSelectLead}
               onOpenNewLeadModal={() => setIsNewLeadModalOpen(true)}
               onUpdateLeadStatus={handleUpdateLeadStatus}
               onBulkAssign={handleBulkAssignLeads}
               onEditLead={(record) => setEditingRecord({ type: 'lead', record })}
               onDeleteLead={handleDeleteLead}
+              onImportLeads={handleImportLeads}
             />
           )}
 
@@ -931,6 +1190,7 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
               onConvertToCustomer={handleConvertToCustomer}
               onCreateOpportunity={handleCreateOpportunityFromLead}
               onCreateProposal={handleCreateProposalFromLead}
+              onOpenWhatsApp={(lead) => setWhatsAppRecipient({ name: lead.name, company: lead.company, phone: lead.whatsapp || lead.phone, service: lead.interestedService, owner: lead.leadOwner || staffUser.name })}
             />
           )}
 
@@ -942,6 +1202,7 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
               onEditCustomer={(record) => setEditingRecord({ type: 'customer', record })}
               onDeleteCustomer={handleDeleteCustomer}
               onInvitePortalAccess={setPortalInviteCustomer}
+              onOpenWhatsApp={(customer) => setWhatsAppRecipient({ name: customer.primaryContact || customer.companyName, company: customer.companyName, phone: customer.phone, owner: customer.relationshipManager || staffUser.name })}
             />
           )}
 
@@ -954,9 +1215,19 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
               opportunities={opportunities}
               proposals={proposals}
               contracts={amcRenewals}
+              payments={payments}
               onBack={() => setCurrentView('customers')}
               onEdit={() => setEditingRecord({ type: 'customer', record: currentCustomer })}
               onOpenDocuments={() => handleNavigate('documents')}
+              onOpenPayments={() => handleNavigate('payments')}
+              onCreateInvoice={() => handleCreateInvoice('Tax Invoice', currentCustomer)}
+              onCreateQuotation={() => {
+                const lead = leads.find((item) => item.company === currentCustomer.companyName);
+                if (lead) handleCreateProposalFromLead(lead, 'quotations');
+                else alert('Create or link a lead for this customer before preparing a quotation.');
+              }}
+              onOpenWhatsApp={() => setWhatsAppRecipient({ name: currentCustomer.primaryContact || currentCustomer.companyName, company: currentCustomer.companyName, phone: currentCustomer.phone, owner: currentCustomer.relationshipManager || staffUser.name })}
+              onInvitePortal={() => setPortalInviteCustomer(currentCustomer)}
             />
           )}
 
@@ -1054,6 +1325,7 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
       )}
       {showStaffInvite && <StaffInviteModal onClose={() => setShowStaffInvite(false)} />}
       {showMyProfile && <MyProfile user={staffUser} onClose={() => setShowMyProfile(false)} onSaved={async (user) => { onStaffUserChange(user); setShowMyProfile(false); }} />}
+      {whatsAppRecipient && <WhatsAppComposerModal recipient={whatsAppRecipient} onClose={() => setWhatsAppRecipient(null)} />}
       {editingRecord && (() => {
         const editorConfig = getEditorConfig(editingRecord, staffAssignees);
         const editableFields = editingRecord.type === 'opportunity' &&

@@ -9,6 +9,7 @@ const collectionStorage = {
   opportunities: "tds-crm:v2:opportunities",
   proposals: "tds-crm:v2:proposals",
   invoices: "tds-crm:v2:invoices",
+  payments: "tds-crm:v2:payments",
   contracts: "tds-crm:v2:amc-renewals"
 } as const;
 
@@ -39,6 +40,7 @@ const resourcePages: Record<keyof typeof collectionStorage, string[]> = {
   opportunities: ["pipeline"],
   proposals: ["quotations", "proposals"],
   invoices: ["proforma", "invoices", "payments"],
+  payments: ["payments", "invoices"],
   contracts: ["amc", "portal"]
 };
 

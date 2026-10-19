@@ -40,6 +40,7 @@ interface Lead360ViewProps {
   onConvertToCustomer: (lead: Lead) => void;
   onCreateOpportunity: (lead: Lead) => void;
   onCreateProposal: (lead: Lead) => void;
+  onOpenWhatsApp: (lead: Lead) => void;
 }
 
 export const Lead360View: React.FC<Lead360ViewProps> = ({
@@ -54,7 +55,8 @@ export const Lead360View: React.FC<Lead360ViewProps> = ({
   onDeleteActivity,
   onConvertToCustomer,
   onCreateOpportunity,
-  onCreateProposal
+  onCreateProposal,
+  onOpenWhatsApp
 }) => {
   const [activeTab, setActiveTab] = useState<
     'Overview' | 'Activities' | 'Contacts' | 'Opportunities' | 'Proposals' | 'Documents' | 'Notes' | 'History'
@@ -155,6 +157,7 @@ export const Lead360View: React.FC<Lead360ViewProps> = ({
             <option value="Requirement Collected">Requirement Collected</option>
             <option value="Qualified">Qualified</option>
             <option value="Opportunity Created">Opportunity Created</option>
+            <option value="Won">Won</option>
             <option value="Converted">Converted</option>
             <option value="Unqualified">Unqualified</option>
           </select>
@@ -180,7 +183,7 @@ export const Lead360View: React.FC<Lead360ViewProps> = ({
                 </span>
                 <span
                   className={`text-xs px-2.5 py-0.5 rounded-full font-bold border ${
-                    lead.status === 'Converted'
+                    lead.status === 'Won' || lead.status === 'Converted'
                       ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                       : 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
                   }`}
@@ -219,15 +222,14 @@ export const Lead360View: React.FC<Lead360ViewProps> = ({
               <Phone className="w-3.5 h-3.5 text-blue-400" />
               Call
             </a>
-            <a
-              href={`https://wa.me/${lead.whatsapp.replace(/[^0-9]/g, '')}`}
-              target="_blank"
-              rel="noreferrer"
+            <button
+              type="button"
+              onClick={() => onOpenWhatsApp(lead)}
               className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition flex items-center gap-1.5 cursor-pointer"
             >
               <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
               WhatsApp
-            </a>
+            </button>
             <a
               href={`mailto:${lead.email}`}
               className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition flex items-center gap-1.5 cursor-pointer"
@@ -251,10 +253,12 @@ export const Lead360View: React.FC<Lead360ViewProps> = ({
             </button>
             <button
               onClick={() => onConvertToCustomer(lead)}
-              className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-600/30 transition flex items-center gap-1.5 cursor-pointer"
+              disabled={lead.status !== 'Won'}
+              title={lead.status === 'Won' ? 'Convert this won lead to a customer' : 'Mark this lead as Won before conversion'}
+              className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-600/30 transition flex items-center gap-1.5 cursor-pointer disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400 disabled:shadow-none"
             >
               <CheckCircle2 className="w-3.5 h-3.5" />
-              Convert
+              {lead.status === 'Won' ? 'Convert to Customer' : 'Win Lead to Convert'}
             </button>
           </div>
         </div>

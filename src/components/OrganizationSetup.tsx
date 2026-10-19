@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Building2, Check, RotateCcw, Save } from 'lucide-react';
 import { DEFAULT_ORGANIZATION_PROFILE } from '../data/organization';
 import { OrganizationProfile } from '../types/crm';
+import { isValidGstin } from '../utils/gst';
 
 interface OrganizationSetupProps {
   profile: OrganizationProfile;
@@ -13,14 +14,21 @@ type ProfileField = keyof OrganizationProfile;
 export const OrganizationSetup: React.FC<OrganizationSetupProps> = ({ profile, onSave }) => {
   const [draft, setDraft] = useState(profile);
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState('');
 
   const updateField = (field: ProfileField, value: string) => {
     setDraft((current) => ({ ...current, [field]: value }));
     setSaved(false);
+    setError('');
   };
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!isValidGstin(draft.gstin)) {
+      setError('Enter a valid 15-character GSTIN before saving.');
+      return;
+    }
+    setError('');
     onSave(draft);
     setSaved(true);
   };
@@ -46,6 +54,7 @@ export const OrganizationSetup: React.FC<OrganizationSetupProps> = ({ profile, o
       </header>
 
       <form onSubmit={handleSubmit} className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+        {error && <p role="alert" className="m-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-medium text-rose-700 sm:mx-6">{error}</p>}
         <section className="border-b border-slate-200 p-4 sm:p-6">
           <SectionHeading title="Organization identity" description="Legal and display names shown throughout the CRM." />
           <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">

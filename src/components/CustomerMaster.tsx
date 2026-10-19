@@ -10,7 +10,8 @@ import {
   Pencil,
   Trash2,
   Eye,
-  MailPlus
+  MailPlus,
+  MessageCircle
 } from 'lucide-react';
 import type { Customer } from '../types/crm';
 import { formatINR } from '../utils/currency';
@@ -33,6 +34,7 @@ interface CustomerMasterProps {
   onEditCustomer: (customer: Customer) => void;
   onDeleteCustomer: (customer: Customer) => void;
   onInvitePortalAccess?: (customer: Customer) => void;
+  onOpenWhatsApp?: (customer: Customer) => void;
 }
 
 export const CustomerMaster: React.FC<CustomerMasterProps> = ({
@@ -41,7 +43,8 @@ export const CustomerMaster: React.FC<CustomerMasterProps> = ({
   onNewCustomer,
   onEditCustomer,
   onDeleteCustomer,
-  onInvitePortalAccess
+  onInvitePortalAccess,
+  onOpenWhatsApp
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState('All');
@@ -132,11 +135,11 @@ export const CustomerMaster: React.FC<CustomerMasterProps> = ({
             onClick={() => {
               const csvContent =
                 'data:text/csv;charset=utf-8,' +
-                ['Customer Code,Company Name,Customer Type,Industry,Contact,Email,Phone,Deals Value (INR)']
+                ['Customer Code,Company Name,Customer GSTIN,Customer Type,Industry,Contact,Email,Phone,Deals Value (INR)']
                   .concat(
                     customers.map(
                       (c) =>
-                        `${c.customerCode},${c.companyName},${c.customerType},${c.industry},${c.primaryContact},${c.email},${c.phone},${c.totalDealsValue}`
+                        `${c.customerCode},${c.companyName},${c.customerGstin || ''},${c.customerType},${c.industry},${c.primaryContact},${c.email},${c.phone},${c.totalDealsValue}`
                     )
                   )
                   .join('\n');
@@ -233,6 +236,7 @@ export const CustomerMaster: React.FC<CustomerMasterProps> = ({
                   <td className="py-3 px-4">
                     <div className="font-bold text-white text-xs">{cust.companyName}</div>
                     <div className="text-[10px] text-slate-400 mt-0.5">{cust.city}</div>
+                    {cust.customerGstin && <div className="mt-0.5 font-mono text-[9px] text-cyan-400">GSTIN {cust.customerGstin}</div>}
                   </td>
 
                   <td className="py-3 px-4">
@@ -279,6 +283,9 @@ export const CustomerMaster: React.FC<CustomerMasterProps> = ({
 
                   <td className="py-3 px-4 text-slate-300">{cust.relationshipManager}</td>
                   <td className="py-3 px-4 text-right">
+                    {onOpenWhatsApp && cust.phone && (
+                      <button type="button" onClick={() => onOpenWhatsApp(cust)} title="Message customer on WhatsApp" aria-label={`Message ${cust.companyName} on WhatsApp`} className="rounded-lg p-1.5 text-slate-500 hover:bg-emerald-50 hover:text-emerald-600"><MessageCircle className="h-3.5 w-3.5" /></button>
+                    )}
                     {onInvitePortalAccess && (
                       <button
                         type="button"

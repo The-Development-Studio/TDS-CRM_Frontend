@@ -21,10 +21,12 @@ import {
   SlidersHorizontal,
   UserCheck,
   Pencil,
-  Trash2
+  Trash2,
+  Upload
 } from 'lucide-react';
 import type { Lead, StaffAssignee } from '../types/crm';
 import { formatINR } from '../utils/currency';
+import { LeadImportModal } from './LeadImportModal';
 
 interface LeadListProps {
   leads: Lead[];
@@ -35,6 +37,8 @@ interface LeadListProps {
   onEditLead: (lead: Lead) => void;
   onDeleteLead: (lead: Lead) => void;
   assignees: StaffAssignee[];
+  onOpenWhatsApp: (lead: Lead) => void;
+  onImportLeads: (leads: Lead[]) => { imported: number; skipped: number };
 }
 
 export const LeadList: React.FC<LeadListProps> = ({
@@ -45,16 +49,25 @@ export const LeadList: React.FC<LeadListProps> = ({
   onBulkAssign,
   onEditLead,
   onDeleteLead,
-  assignees
+  assignees,
+  onOpenWhatsApp,
+  onImportLeads
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [sourceFilter, setSourceFilter] = useState<string>('All');
   const [priorityFilter, setPriorityFilter] = useState<string>('All');
+  const [ownerFilter, setOwnerFilter] = useState<string>('All');
   const [selectedLeads, setSelectedLeads] = useState<string[]>([]);
   const [bulkAssignOwner, setBulkAssignOwner] = useState('');
   const [bulkActionOpen, setBulkActionOpen] = useState(false);
   const [showFilterDrawer, setShowFilterDrawer] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const ownerOptions = Array.from(new Set([
+    ...assignees.map((assignee) => assignee.name),
+    ...leads.map((lead) => lead.leadOwner).filter(Boolean)
+  ])).sort((first, second) => first.localeCompare(second));
+  const activeFilterCount = [statusFilter, sourceFilter, priorityFilter, ownerFilter].filter((value) => value !== 'All').length;
 
   // Filter leads
   const filteredLeads = leads.filter((lead) => {
@@ -68,8 +81,10 @@ export const LeadList: React.FC<LeadListProps> = ({
     const matchesStatus = statusFilter === 'All' || lead.status === statusFilter;
     const matchesSource = sourceFilter === 'All' || lead.source === sourceFilter;
     const matchesPriority = priorityFilter === 'All' || lead.priority === priorityFilter;
+    const matchesOwner = ownerFilter === 'All'
+      || (ownerFilter === 'Unassigned' ? !lead.leadOwner.trim() : lead.leadOwner === ownerFilter);
 
-    return matchesSearch && matchesStatus && matchesSource && matchesPriority;
+    return matchesSearch && matchesStatus && matchesSource && matchesPriority && matchesOwner;
   });
 
   const toggleSelectAll = () => {
@@ -108,6 +123,8 @@ export const LeadList: React.FC<LeadListProps> = ({
         return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30';
       case 'Opportunity Created':
         return 'bg-purple-500/10 text-purple-400 border-purple-500/30';
+      case 'Won':
+        return 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 font-bold';
       case 'Converted':
         return 'bg-green-500/20 text-green-300 border-green-500/40 font-bold';
       case 'Unqualified':
@@ -147,6 +164,14 @@ export const LeadList: React.FC<LeadListProps> = ({
         </div>
 
         <div className="flex items-center gap-2.5">
+          <button
+            onClick={() => setShowImportModal(true)}
+            className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700 transition flex items-center gap-1.5 cursor-pointer"
+            title="Import leads from CSV"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            Import
+          </button>
           <button
             onClick={() => {
               const csvContent =
@@ -201,16 +226,14 @@ export const LeadList: React.FC<LeadListProps> = ({
           <button
             onClick={() => setShowFilterDrawer(!showFilterDrawer)}
             className={`px-3 py-1.5 rounded-xl border flex items-center gap-1.5 transition cursor-pointer font-medium ${
-              showFilterDrawer || statusFilter !== 'All' || sourceFilter !== 'All' || priorityFilter !== 'All'
+              showFilterDrawer || activeFilterCount > 0
                 ? 'bg-indigo-600/20 border-indigo-500 text-indigo-300'
                 : 'bg-slate-800/80 border-slate-700 text-slate-300 hover:bg-slate-800'
             }`}
           >
             <Filter className="w-3.5 h-3.5" />
             <span>Filters</span>
-            {(statusFilter !== 'All' || sourceFilter !== 'All' || priorityFilter !== 'All') && (
-              <span className="w-2 h-2 rounded-full bg-cyan-400" />
-            )}
+            {activeFilterCount > 0 && <span className="grid h-4 min-w-4 place-items-center rounded-full bg-cyan-400 px-1 text-[9px] font-bold text-slate-950">{activeFilterCount}</span>}
           </button>
         </div>
 
@@ -230,7 +253,7 @@ export const LeadList: React.FC<LeadListProps> = ({
               {bulkActionOpen && (
                 <div className="absolute right-0 mt-1 w-48 bg-[#131B2E] border border-slate-700 rounded-xl shadow-2xl p-1 z-50">
                   <div className="px-2.5 py-1 text-[10px] uppercase font-bold text-slate-300">Update Selected To:</div>
-                  {(['Assigned', 'Contacted', 'Requirement Collected', 'Qualified', 'Opportunity Created', 'Converted'] as const).map(
+                  {(['Assigned', 'Contacted', 'Requirement Collected', 'Qualified', 'Opportunity Created', 'Won', 'Unqualified'] as const).map(
                     (st) => (
                       <button
                         key={st}
@@ -270,7 +293,7 @@ export const LeadList: React.FC<LeadListProps> = ({
 
       {/* Advanced Filter Drawer */}
       {showFilterDrawer && (
-        <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs animate-in slide-in-from-top-2 duration-150">
+        <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3 text-xs animate-in slide-in-from-top-2 duration-150">
           <div>
             <label className="text-[10px] uppercase font-bold text-slate-300 mb-1 block">Lead Status</label>
             <select
@@ -285,6 +308,8 @@ export const LeadList: React.FC<LeadListProps> = ({
               <option value="Requirement Collected">Requirement Collected</option>
               <option value="Qualified">Qualified</option>
               <option value="Opportunity Created">Opportunity Created</option>
+              <option value="Won">Won</option>
+              <option value="Unqualified">Unqualified</option>
               <option value="Converted">Converted</option>
             </select>
           </div>
@@ -319,6 +344,35 @@ export const LeadList: React.FC<LeadListProps> = ({
               <option value="Medium">Medium</option>
               <option value="Low">Low</option>
             </select>
+          </div>
+
+          <div>
+            <label className="text-[10px] uppercase font-bold text-slate-300 mb-1 block">Staff / Lead Owner</label>
+            <select
+              value={ownerFilter}
+              onChange={(e) => setOwnerFilter(e.target.value)}
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-white"
+            >
+              <option value="All">All Staff</option>
+              <option value="Unassigned">Unassigned</option>
+              {ownerOptions.map((owner) => <option key={owner} value={owner}>{owner}</option>)}
+            </select>
+          </div>
+
+          <div className="flex items-end">
+            <button
+              type="button"
+              disabled={activeFilterCount === 0}
+              onClick={() => {
+                setStatusFilter('All');
+                setSourceFilter('All');
+                setPriorityFilter('All');
+                setOwnerFilter('All');
+              }}
+              className="w-full rounded-lg border border-slate-700 bg-slate-800 p-2 font-semibold text-slate-300 transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Clear filters
+            </button>
           </div>
         </div>
       )}
@@ -393,9 +447,9 @@ export const LeadList: React.FC<LeadListProps> = ({
                           <span title={lead.phone} className="flex items-center gap-0.5 text-slate-300">
                             <Phone className="w-3 h-3 text-emerald-400" /> {lead.phone}
                           </span>
-                          <span title={lead.whatsapp} className="text-green-400 font-semibold">
+                          <button type="button" onClick={(event) => { event.stopPropagation(); onOpenWhatsApp(lead); }} title={`Message ${lead.name} on WhatsApp`} aria-label={`Message ${lead.name} on WhatsApp`} className="text-green-400 font-semibold hover:text-green-300 hover:underline">
                             WA
-                          </span>
+                          </button>
                         </div>
                       </td>
 
@@ -508,6 +562,7 @@ export const LeadList: React.FC<LeadListProps> = ({
           </div>
         </div>
       </div>
+      <LeadImportModal isOpen={showImportModal} onClose={() => setShowImportModal(false)} onImport={onImportLeads} />
     </div>
   );
 };

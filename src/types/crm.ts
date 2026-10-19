@@ -13,7 +13,7 @@ export interface Lead {
   estimatedBudget: number;
   leadOwner: string;
   leadOwnerAvatar?: string;
-  status: 'New' | 'Assigned' | 'Contacted' | 'Requirement Collected' | 'Qualified' | 'Opportunity Created' | 'Unqualified' | 'Converted';
+  status: 'New' | 'Assigned' | 'Contacted' | 'Requirement Collected' | 'Qualified' | 'Opportunity Created' | 'Won' | 'Unqualified' | 'Converted';
   priority: 'High' | 'Medium' | 'Low' | 'Urgent';
   nextFollowUp: string;
   nextFollowUpTime: string;
@@ -44,6 +44,9 @@ export interface Customer {
   renewalDate: string;
   relationshipManager: string;
   city: string;
+  customerGstin?: string;
+  billingAddress?: string;
+  state?: string;
   internalDocumentLink?: string;
 }
 
@@ -82,6 +85,14 @@ export interface Opportunity {
   owner: string;
 }
 
+export interface CommercialLineItem {
+  id: string;
+  description: string;
+  hsnSac: string;
+  quantity: number;
+  rate: number;
+}
+
 export interface Proposal {
   id: string;
   proposalNumber: string;
@@ -92,6 +103,10 @@ export interface Proposal {
   status: 'Draft' | 'Sent' | 'Client Review' | 'Accepted' | 'Declined';
   sentDate: string;
   validUntil: string;
+  documentType?: 'Quotation' | 'Proposal';
+  lineItems?: CommercialLineItem[];
+  customerNotes?: string;
+  terms?: string;
 }
 
 export interface Invoice {
@@ -101,9 +116,46 @@ export interface Invoice {
   type: 'Proforma' | 'Tax Invoice';
   amount: number;
   paidAmount: number;
-  status: 'Paid' | 'Partially Paid' | 'Outstanding' | 'Overdue' | 'Voided';
+  status: 'Draft' | 'Sent' | 'Paid' | 'Partially Paid' | 'Outstanding' | 'Overdue' | 'Voided';
   dueDate: string;
   issueDate: string;
+  description?: string;
+  sacCode?: string;
+  taxableAmount?: number;
+  discount?: number;
+  gstRate?: number;
+  supplyType?: 'Intra-state' | 'Inter-state' | 'Export/SEZ';
+  placeOfSupply?: string;
+  customerGstin?: string;
+  billingAddress?: string;
+  reverseCharge?: 'Yes' | 'No';
+  cgstAmount?: number;
+  sgstAmount?: number;
+  igstAmount?: number;
+  totalTax?: number;
+  irn?: string;
+  acknowledgementNumber?: string;
+  acknowledgementDate?: string;
+  paymentReference?: string;
+  paymentDate?: string;
+  paymentMode?: string;
+  lineItems?: CommercialLineItem[];
+  purchaseOrderNumber?: string;
+  customerNotes?: string;
+  terms?: string;
+}
+
+export interface PaymentRecord {
+  id: string;
+  paymentNumber: string;
+  invoiceId: string;
+  invoiceNo: string;
+  customer: string;
+  paymentDate: string;
+  amount: number;
+  mode: 'Bank Transfer' | 'UPI' | 'Cheque' | 'Cash' | 'Card' | 'Other';
+  reference: string;
+  notes: string;
 }
 
 export interface OrganizationProfile {

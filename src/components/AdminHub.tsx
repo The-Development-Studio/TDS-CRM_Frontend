@@ -358,12 +358,13 @@ const AdminTable: React.FC<AdminTableProps> = ({
               <tr key={record.id} className="transition hover:bg-slate-800/40">
                 {columns.map((column) => {
                   const value = record[column.key] ?? '';
-                  const text = column.format ? column.format(value) : String(value);
+                  const scalarValue = Array.isArray(value) ? '' : value;
+                  const text = column.format ? column.format(scalarValue) : String(scalarValue);
                   return (
                     <td key={column.key} className="px-4 py-3 text-slate-700">
                       {column.key === 'status' ? (
                         <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                          value === 'Active'
+                          scalarValue === 'Active'
                             ? 'bg-emerald-500/20 text-emerald-300'
                             : 'bg-slate-200 text-slate-600'
                         }`}>{text}</span>

@@ -219,7 +219,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const leadSourceStats = sources.map((source) => {
     const sourceLeads = leads.filter((lead) => lead.source === source);
     const qualifiedLeads = sourceLeads.filter((lead) =>
-      ['Qualified', 'Opportunity Created', 'Converted'].includes(lead.status)
+      ['Qualified', 'Opportunity Created', 'Won', 'Converted'].includes(lead.status)
     );
     const sourceLeadIds = new Set(sourceLeads.map((lead) => lead.id));
     const revenue = wonDeals.filter((opportunity) => sourceLeadIds.has(opportunity.leadId))

@@ -7,9 +7,17 @@ import {
   Share2,
   Pencil,
   Trash2,
-  Ban
+  Ban,
+  Send,
+  CheckCircle2,
+  ArrowRight,
+  CreditCard,
+  ShieldCheck,
+  TriangleAlert,
+  Search,
+  ReceiptIndianRupee
 } from 'lucide-react';
-import type { Proposal, Invoice, Lead } from '../types/crm';
+import type { Proposal, Invoice, Lead, PaymentRecord } from '../types/crm';
 import { OrganizationProfile } from '../types/crm';
 import { formatINR } from '../utils/currency';
 import appLogo from '../assets/logo2.png';
@@ -35,6 +43,26 @@ interface FinancialDocument {
   amount: number;
   paidAmount?: number;
   status?: string;
+  customerGstin?: string;
+  billingAddress?: string;
+  placeOfSupply?: string;
+  sacCode?: string;
+  taxableAmount?: number;
+  discount?: number;
+  gstRate?: number;
+  supplyType?: Invoice['supplyType'];
+  reverseCharge?: Invoice['reverseCharge'];
+  cgstAmount?: number;
+  sgstAmount?: number;
+  igstAmount?: number;
+  totalTax?: number;
+  irn?: string;
+  acknowledgementNumber?: string;
+  acknowledgementDate?: string;
+  lineItems?: Invoice['lineItems'];
+  purchaseOrderNumber?: string;
+  customerNotes?: string;
+  terms?: string;
   organization: OrganizationProfile;
 }
 
@@ -43,45 +71,89 @@ export type CommercialPageType = 'proposals' | 'invoices' | 'proforma' | 'paymen
 export interface CommercialHubProps {
   proposals: Proposal[];
   invoices: Invoice[];
+  payments: PaymentRecord[];
   leads: Lead[];
   organization: OrganizationProfile;
   onNewProposal: () => void;
   onNewInvoice: (type?: Invoice['type']) => void;
   onEditProposal: (proposal: Proposal) => void;
   onDeleteProposal: (proposal: Proposal) => void;
+  onUpdateProposalStatus: (proposal: Proposal, status: Proposal['status']) => void;
+  onConvertProposalToInvoice: (proposal: Proposal, type?: Invoice['type']) => void;
   onEditInvoice: (invoice: Invoice) => void;
   onVoidInvoice: (invoice: Invoice) => void;
+  onConvertProformaToTaxInvoice: (invoice: Invoice) => void;
+  onRecordPayment: (invoice: Invoice, amount: number, reference: string, mode: PaymentRecord['mode'], paymentDate: string, notes: string) => void;
+  onUpdateInvoiceStatus: (invoice: Invoice, status: Invoice['status']) => void;
   page: CommercialPageType;
 }
 
 export const CommercialHub: React.FC<CommercialHubProps> = ({
   proposals,
   invoices,
+  payments,
   leads,
   organization,
   onNewProposal,
   onNewInvoice,
   onEditProposal,
   onDeleteProposal,
+  onUpdateProposalStatus,
+  onConvertProposalToInvoice,
   onEditInvoice,
   onVoidInvoice,
+  onConvertProformaToTaxInvoice,
+  onRecordPayment,
+  onUpdateInvoiceStatus,
   page
 }) => {
   const [documentPreview, setDocumentPreview] = useState<FinancialDocument | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('All');
+  const [paymentTarget, setPaymentTarget] = useState<Invoice | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentMode, setPaymentMode] = useState<PaymentRecord['mode']>('Bank Transfer');
+  const [paymentReference, setPaymentReference] = useState('');
+  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
+  const [paymentNotes, setPaymentNotes] = useState('');
 
   const currentTab = page;
+  const pageProposals = proposals.filter((proposal) => currentTab === 'quotations'
+    ? proposal.documentType === 'Quotation'
+    : (proposal.documentType ?? 'Proposal') === 'Proposal');
+  const visibleProposals = pageProposals.filter((proposal) => {
+    const query = searchTerm.trim().toLowerCase();
+    const matchesSearch = !query || [proposal.proposalNumber, proposal.title, proposal.service].some((value) => value.toLowerCase().includes(query));
+    return matchesSearch && (statusFilter === 'All' || proposal.status === statusFilter);
+  });
 
-  const activeInvoices = invoices.filter((invoice) => invoice.status !== 'Voided');
+  const activeInvoices = invoices.filter((invoice) => invoice.type === 'Tax Invoice' && invoice.status !== 'Voided');
+  const paymentInvoices = activeInvoices.filter((invoice) => {
+    const query = searchTerm.trim().toLowerCase();
+    const matchesSearch = !query || [invoice.invoiceNo, invoice.customer, invoice.paymentReference ?? ''].some((value) => value.toLowerCase().includes(query));
+    return matchesSearch && (statusFilter === 'All' || invoice.status === statusFilter);
+  });
+  const visiblePayments = payments.filter((payment) => {
+    const query = searchTerm.trim().toLowerCase();
+    const invoice = invoices.find((item) => item.id === payment.invoiceId);
+    const matchesSearch = !query || [payment.paymentNumber, payment.invoiceNo, payment.customer, payment.reference].some((value) => value.toLowerCase().includes(query));
+    return matchesSearch && (statusFilter === 'All' || invoice?.status === statusFilter);
+  });
   const totalInvoiced = activeInvoices.reduce((s, i) => s + i.amount, 0);
   const totalPaid = activeInvoices.reduce((s, i) => s + i.paidAmount, 0);
   const totalOutstanding = totalInvoiced - totalPaid;
-  const visibleInvoices = invoices.filter((invoice) =>
+  const pageInvoices = invoices.filter((invoice) =>
     currentTab === 'proforma' ? invoice.type === 'Proforma' : invoice.type === 'Tax Invoice'
   );
+  const visibleInvoices = pageInvoices.filter((invoice) => {
+    const query = searchTerm.trim().toLowerCase();
+    const matchesSearch = !query || [invoice.invoiceNo, invoice.customer, invoice.purchaseOrderNumber ?? ''].some((value) => value.toLowerCase().includes(query));
+    return matchesSearch && (statusFilter === 'All' || invoice.status === statusFilter);
+  });
   const activeVisibleInvoices = visibleInvoices.filter((invoice) => invoice.status !== 'Voided');
   const visibleInvoiceValue = activeVisibleInvoices.reduce((sum, invoice) => sum + invoice.amount, 0);
   const visibleInvoicePaid = activeVisibleInvoices.reduce((sum, invoice) => sum + invoice.paidAmount, 0);
-  const proposalValue = proposals.reduce((sum, proposal) => sum + proposal.amount, 0);
+  const proposalValue = visibleProposals.reduce((sum, proposal) => sum + proposal.amount, 0);
   const pageConfig = {
     quotations: {
       title: 'Quotations',
@@ -116,9 +188,9 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
   }[currentTab];
   const summaryMetrics = currentTab === 'quotations' || currentTab === 'proposals'
     ? [
-        { label: 'Total Documents', value: String(proposals.length), detail: `${pageConfig.title} on record`, valueClass: 'text-slate-900' },
+        { label: 'Total Documents', value: String(visibleProposals.length), detail: `${pageConfig.title} on record`, valueClass: 'text-slate-900' },
         { label: 'Commercial Value', value: formatINR(proposalValue), detail: 'Combined value before tax', valueClass: 'text-[#ff5c00]' },
-        { label: 'Accepted', value: String(proposals.filter((proposal) => proposal.status === 'Accepted').length), detail: `${proposals.filter((proposal) => proposal.status === 'Draft').length} drafts in progress`, valueClass: 'text-emerald-600' }
+        { label: 'Accepted', value: String(visibleProposals.filter((proposal) => proposal.status === 'Accepted').length), detail: `${visibleProposals.filter((proposal) => proposal.status === 'Draft').length} drafts in progress`, valueClass: 'text-emerald-600' }
       ]
     : currentTab === 'payments'
     ? [
@@ -166,6 +238,9 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
       scope: lead?.requirement,
       description: `${proposal.title} - ${proposal.service}`,
       amount: proposal.amount,
+      lineItems: proposal.lineItems,
+      customerNotes: proposal.customerNotes,
+      terms: proposal.terms,
       status: proposal.status,
       organization
     });
@@ -186,8 +261,48 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
       amount: invoice.amount,
       paidAmount: invoice.paidAmount,
       status: invoice.status,
+      customerGstin: invoice.customerGstin,
+      billingAddress: invoice.billingAddress,
+      placeOfSupply: invoice.placeOfSupply,
+      sacCode: invoice.sacCode,
+      taxableAmount: invoice.taxableAmount,
+      discount: invoice.discount,
+      gstRate: invoice.gstRate,
+      supplyType: invoice.supplyType,
+      reverseCharge: invoice.reverseCharge,
+      cgstAmount: invoice.cgstAmount,
+      sgstAmount: invoice.sgstAmount,
+      igstAmount: invoice.igstAmount,
+      totalTax: invoice.totalTax,
+      irn: invoice.irn,
+      acknowledgementNumber: invoice.acknowledgementNumber,
+      acknowledgementDate: invoice.acknowledgementDate,
+      lineItems: invoice.lineItems,
+      purchaseOrderNumber: invoice.purchaseOrderNumber,
+      customerNotes: invoice.customerNotes,
+      terms: invoice.terms,
       organization
     });
+  };
+
+  const recordPayment = (invoice: Invoice) => {
+    const balance = Math.max(0, invoice.amount - invoice.paidAmount);
+    setPaymentTarget(invoice);
+    setPaymentAmount(String(balance));
+    setPaymentMode('Bank Transfer');
+    setPaymentReference('');
+    setPaymentDate(new Date().toISOString().split('T')[0]);
+    setPaymentNotes('');
+  };
+
+  const submitPayment = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!paymentTarget) return;
+    const amount = Number(paymentAmount);
+    const balance = Math.max(0, paymentTarget.amount - paymentTarget.paidAmount);
+    if (!Number.isFinite(amount) || amount <= 0 || amount > balance || !paymentReference.trim()) return;
+    onRecordPayment(paymentTarget, amount, paymentReference.trim(), paymentMode, paymentDate, paymentNotes.trim());
+    setPaymentTarget(null);
   };
 
   return (
@@ -230,6 +345,36 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
         ))}
       </div>
 
+      <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="relative w-full max-w-md">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder={`Search ${pageConfig.title.toLowerCase()}...`} className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-800 outline-none focus:border-[#ff6600] focus:ring-2 focus:ring-orange-100" />
+        </div>
+        <div className="flex items-center gap-2">
+          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} aria-label="Filter by status" className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 outline-none focus:border-[#ff6600]">
+            <option value="All">All statuses</option>
+            {(currentTab === 'quotations' || currentTab === 'proposals'
+              ? ['Draft', 'Sent', 'Client Review', 'Accepted', 'Declined']
+              : ['Draft', 'Sent', 'Outstanding', 'Partially Paid', 'Paid', 'Overdue', 'Voided']
+            ).map((status) => <option key={status} value={status}>{status}</option>)}
+          </select>
+          {(searchTerm || statusFilter !== 'All') && <button type="button" onClick={() => { setSearchTerm(''); setStatusFilter('All'); }} className="h-10 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-600 hover:bg-slate-50">Clear</button>}
+        </div>
+      </div>
+
+      {(currentTab === 'invoices' || currentTab === 'proforma') && (
+        <div className={`flex gap-3 rounded-xl border px-4 py-3 text-xs ${organization.gstin && organization.state ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
+          {organization.gstin && organization.state ? <ShieldCheck className="h-4 w-4 shrink-0" /> : <TriangleAlert className="h-4 w-4 shrink-0" />}
+          <div>
+            <p className="font-bold">GST readiness</p>
+            <p className="mt-0.5">{organization.gstin && organization.state
+              ? 'Supplier GSTIN and state are configured. Verify recipient GSTIN, place of supply, SAC/HSN, tax rate, and e-invoice details before issue.'
+              : 'Complete the supplier GSTIN and registered state in Organization Setup before issuing a statutory tax invoice.'}</p>
+            {currentTab === 'invoices' && <p className="mt-1 text-[10px] opacity-80">E-invoicing generally applies from ₹5 crore AATO; taxpayers with AATO of ₹10 crore or more must report covered documents within 30 days. Confirm applicability and exemptions with your GST adviser.</p>}
+          </div>
+        </div>
+      )}
+
       {/* Page contents */}
       {(currentTab === 'proposals' || currentTab === 'quotations') && (
         <div className="rounded-2xl bg-[#111827]/80 border border-slate-800 shadow-md overflow-hidden">
@@ -248,7 +393,7 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 font-medium">
-              {proposals.map((prop) => (
+              {visibleProposals.map((prop) => (
                 <tr key={prop.id} className="hover:bg-slate-800/40 transition">
                   <td className="py-3 px-4 font-mono font-bold text-pink-400">{prop.proposalNumber}</td>
                   <td className="py-3 px-4 font-bold text-white">{prop.title}</td>
@@ -278,6 +423,9 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
                       </button>
                       {prop.status === 'Draft' && (
                         <>
+                          <button type="button" onClick={() => onUpdateProposalStatus(prop, 'Sent')} className="rounded p-1.5 text-slate-400 hover:bg-blue-500/10 hover:text-blue-300" title="Mark as sent" aria-label={`Mark ${prop.proposalNumber} as sent`}>
+                            <Send className="h-3.5 w-3.5" />
+                          </button>
                           <button type="button" onClick={() => onEditProposal(prop)} className="rounded p-1.5 text-slate-400 hover:bg-slate-700 hover:text-white" title="Edit draft" aria-label={`Edit draft ${prop.proposalNumber}`}>
                             <Pencil className="h-3.5 w-3.5" />
                           </button>
@@ -285,6 +433,17 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
                         </>
+                      )}
+                      {prop.status === 'Sent' && (
+                        <>
+                          <button type="button" onClick={() => onUpdateProposalStatus(prop, 'Accepted')} className="rounded p-1.5 text-slate-400 hover:bg-emerald-500/10 hover:text-emerald-300" title="Mark as accepted" aria-label={`Mark ${prop.proposalNumber} as accepted`}><CheckCircle2 className="h-3.5 w-3.5" /></button>
+                          <button type="button" onClick={() => onUpdateProposalStatus(prop, 'Declined')} className="rounded p-1.5 text-slate-400 hover:bg-rose-500/10 hover:text-rose-300" title="Mark as declined" aria-label={`Mark ${prop.proposalNumber} as declined`}><X className="h-3.5 w-3.5" /></button>
+                        </>
+                      )}
+                      {prop.status === 'Accepted' && (
+                        <button type="button" onClick={() => onConvertProposalToInvoice(prop, currentTab === 'quotations' ? 'Proforma' : 'Tax Invoice')} className="rounded p-1.5 text-slate-400 hover:bg-orange-500/10 hover:text-orange-300" title={currentTab === 'quotations' ? 'Convert to proforma invoice' : 'Convert to tax invoice'} aria-label={`Convert ${prop.proposalNumber} to invoice`}>
+                          <ArrowRight className="h-3.5 w-3.5" />
+                        </button>
                       )}
                     </div>
                   </td>
@@ -305,7 +464,9 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
                 <th className="py-3 px-4">Invoice No</th>
                 <th className="py-3 px-4">Customer Account</th>
                 <th className="py-3 px-4">Type</th>
-                <th className="py-3 px-4 text-right">Invoice Amount</th>
+                <th className="py-3 px-4 text-right">Taxable Value</th>
+                <th className="py-3 px-4 text-right">GST</th>
+                <th className="py-3 px-4 text-right">Grand Total</th>
                 <th className="py-3 px-4 text-right">Paid Amount</th>
                 <th className="py-3 px-4">Due Date</th>
                 <th className="py-3 px-4">Status</th>
@@ -319,8 +480,10 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
                   <td className="py-3 px-4 font-bold text-white">{inv.customer}</td>
                   <td className="py-3 px-4 text-slate-300">{inv.type}</td>
                   <td className="py-3 px-4 text-right font-mono font-bold text-white">
-                    {formatINR(inv.amount)}
+                    {formatINR(inv.taxableAmount ?? inv.amount)}
                   </td>
+                  <td className="py-3 px-4 text-right font-mono text-cyan-300">{formatINR(inv.totalTax ?? 0)}</td>
+                  <td className="py-3 px-4 text-right font-mono font-bold text-white">{formatINR(inv.amount)}</td>
                   <td className="py-3 px-4 text-right font-mono text-emerald-400">
                     {formatINR(inv.paidAmount)}
                   </td>
@@ -343,6 +506,16 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
                       <button type="button" onClick={() => openInvoicePreview(inv)} className="rounded p-1.5 text-slate-400 hover:bg-slate-700 hover:text-white" title="Preview invoice" aria-label={`Preview invoice ${inv.invoiceNo}`}>
                         <Eye className="h-3.5 w-3.5" />
                       </button>
+                      {inv.status === 'Draft' && (
+                        <button type="button" onClick={() => onUpdateInvoiceStatus(inv, 'Sent')} className="rounded p-1.5 text-slate-400 hover:bg-blue-500/10 hover:text-blue-300" title="Issue / mark as sent" aria-label={`Issue invoice ${inv.invoiceNo}`}>
+                          <Send className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                      {inv.status === 'Sent' && inv.type === 'Tax Invoice' && (
+                        <button type="button" onClick={() => onUpdateInvoiceStatus(inv, 'Outstanding')} className="rounded p-1.5 text-slate-400 hover:bg-amber-500/10 hover:text-amber-300" title="Mark payment due" aria-label={`Mark ${inv.invoiceNo} outstanding`}>
+                          <ReceiptIndianRupee className="h-3.5 w-3.5" />
+                        </button>
+                      )}
                       {inv.paidAmount === 0 && inv.status !== 'Voided' && (
                         <>
                           <button type="button" onClick={() => onEditInvoice(inv)} className="rounded p-1.5 text-slate-400 hover:bg-slate-700 hover:text-white" title="Edit unpaid invoice" aria-label={`Edit invoice ${inv.invoiceNo}`}>
@@ -352,6 +525,16 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
                             <Ban className="h-3.5 w-3.5" />
                           </button>
                         </>
+                      )}
+                      {inv.type === 'Proforma' && inv.status !== 'Voided' && (
+                        <button type="button" onClick={() => onConvertProformaToTaxInvoice(inv)} className="rounded p-1.5 text-slate-400 hover:bg-orange-500/10 hover:text-orange-300" title="Convert to tax invoice" aria-label={`Convert ${inv.invoiceNo} to tax invoice`}>
+                          <ArrowRight className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                      {inv.type === 'Tax Invoice' && inv.status !== 'Draft' && inv.status !== 'Paid' && inv.status !== 'Voided' && (
+                        <button type="button" onClick={() => recordPayment(inv)} className="rounded p-1.5 text-slate-400 hover:bg-emerald-500/10 hover:text-emerald-300" title="Record payment" aria-label={`Record payment for ${inv.invoiceNo}`}>
+                          <CreditCard className="h-3.5 w-3.5" />
+                        </button>
                       )}
                     </div>
                   </td>
@@ -366,12 +549,26 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
       {currentTab === 'payments' && (
         <div className="space-y-4">
           <div className="rounded-2xl bg-[#111827]/80 border border-slate-800 shadow-md overflow-hidden">
+            <div className="flex items-center justify-between border-b border-slate-800 p-4">
+              <div><h3 className="text-sm font-bold text-white">Payments Received</h3><p className="mt-1 text-xs text-slate-400">Individual receipts retained for audit and reconciliation</p></div>
+              <span className="text-xs font-medium text-slate-400">{visiblePayments.length} transactions</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-[820px] w-full text-left text-xs">
+                <thead><tr className="border-b border-slate-800 bg-slate-900/90 text-[10px] font-bold uppercase tracking-wider text-slate-300"><th className="px-4 py-3">Payment #</th><th className="px-4 py-3">Date</th><th className="px-4 py-3">Customer</th><th className="px-4 py-3">Invoice</th><th className="px-4 py-3">Mode / Reference</th><th className="px-4 py-3 text-right">Amount</th></tr></thead>
+                <tbody className="divide-y divide-slate-800/60">
+                  {visiblePayments.length ? visiblePayments.map((payment) => <tr key={payment.id} className="hover:bg-slate-800/40"><td className="px-4 py-3 font-mono font-bold text-emerald-400">{payment.paymentNumber}</td><td className="px-4 py-3 font-mono text-slate-400">{payment.paymentDate}</td><td className="px-4 py-3 font-semibold text-white">{payment.customer}</td><td className="px-4 py-3 font-mono text-cyan-400">{payment.invoiceNo}</td><td className="px-4 py-3 text-slate-300">{payment.mode}<br /><span className="text-[10px] text-slate-500">{payment.reference}</span></td><td className="px-4 py-3 text-right font-mono font-bold text-emerald-400">{formatINR(payment.amount)}</td></tr>) : <tr><td colSpan={6} className="px-4 py-10 text-center text-slate-400">No payment receipts recorded yet.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div className="rounded-2xl bg-[#111827]/80 border border-slate-800 shadow-md overflow-hidden">
             <div className="flex flex-col gap-1 border-b border-slate-800 p-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h3 className="text-sm font-bold text-white">Payment Records</h3>
+                <h3 className="text-sm font-bold text-white">Invoice Receivables</h3>
                 <p className="mt-1 text-xs text-slate-400">Recorded payments and balances due by invoice</p>
               </div>
-              <span className="text-xs font-medium text-slate-400">{invoices.length} records</span>
+              <span className="text-xs font-medium text-slate-400">{paymentInvoices.length} records</span>
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-[760px] w-full text-left text-xs">
@@ -382,12 +579,13 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
                     <th className="px-4 py-3">Invoice Date</th>
                     <th className="px-4 py-3 text-right">Paid</th>
                     <th className="px-4 py-3 text-right">Balance</th>
+                    <th className="px-4 py-3">Last Payment</th>
                     <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3 text-center">Document</th>
+                    <th className="px-4 py-3 text-center">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60 font-medium">
-                  {invoices.map((invoice) => (
+                  {paymentInvoices.map((invoice) => (
                     <tr key={invoice.id} className="hover:bg-slate-800/40">
                       <td className="px-4 py-3 font-mono font-bold text-cyan-400">{invoice.invoiceNo}</td>
                       <td className="px-4 py-3 font-semibold text-white">{invoice.customer}</td>
@@ -396,21 +594,21 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
                       <td className="px-4 py-3 text-right font-mono text-amber-400">
                         {formatINR(Math.max(0, invoice.amount - invoice.paidAmount))}
                       </td>
+                      <td className="px-4 py-3 text-slate-400">
+                        {invoice.paymentDate ? <><span className="font-mono">{invoice.paymentDate}</span><br /><span className="text-[10px]">{invoice.paymentMode} · {invoice.paymentReference}</span></> : '—'}
+                      </td>
                       <td className="px-4 py-3">
                         <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-700">
                           {invoice.status}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-center">
-                        <button
-                          type="button"
-                          onClick={() => openInvoicePreview(invoice)}
-                          className="rounded p-1 text-slate-500 hover:bg-slate-100 hover:text-[#ff6600]"
-                          title="Preview invoice document"
-                          aria-label={`Preview document ${invoice.invoiceNo}`}
-                        >
-                          <Eye className="h-4 w-4" />
-                        </button>
+                        <div className="flex items-center justify-center gap-1">
+                          <button type="button" onClick={() => openInvoicePreview(invoice)} className="rounded p-1 text-slate-400 hover:bg-slate-700 hover:text-white" title="Preview invoice document" aria-label={`Preview document ${invoice.invoiceNo}`}><Eye className="h-4 w-4" /></button>
+                          {invoice.status !== 'Draft' && invoice.status !== 'Paid' && (
+                            <button type="button" onClick={() => recordPayment(invoice)} className="rounded p-1 text-slate-400 hover:bg-emerald-500/10 hover:text-emerald-300" title="Record payment" aria-label={`Record payment for ${invoice.invoiceNo}`}><CreditCard className="h-4 w-4" /></button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -419,6 +617,27 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
             </div>
           </div>
 
+        </div>
+      )}
+
+      {paymentTarget && (
+        <div className="fixed inset-0 z-[85] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
+          <button type="button" aria-label="Close payment dialog" onClick={() => setPaymentTarget(null)} className="absolute inset-0 cursor-default" />
+          <form onSubmit={submitPayment} className="relative z-10 w-full max-w-lg rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <header className="flex items-start justify-between border-b border-slate-200 px-5 py-4">
+              <div><h3 className="flex items-center gap-2 text-base font-bold text-slate-900"><CreditCard className="h-5 w-5 text-emerald-600" /> Record Payment</h3><p className="mt-1 text-xs text-slate-500">{paymentTarget.invoiceNo} · {paymentTarget.customer}</p></div>
+              <button type="button" onClick={() => setPaymentTarget(null)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"><X className="h-4 w-4" /></button>
+            </header>
+            <div className="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2">
+              <div className="sm:col-span-2 rounded-lg bg-emerald-50 p-3 text-xs text-emerald-900"><span className="font-semibold">Balance due:</span> <span className="font-mono font-bold">{formatINR(Math.max(0, paymentTarget.amount - paymentTarget.paidAmount))}</span></div>
+              <label className="text-xs font-semibold text-slate-700">Amount received<input required type="number" min="0.01" max={Math.max(0, paymentTarget.amount - paymentTarget.paidAmount)} step="0.01" value={paymentAmount} onChange={(event) => setPaymentAmount(event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-emerald-500" /></label>
+              <label className="text-xs font-semibold text-slate-700">Payment date<input required type="date" value={paymentDate} onChange={(event) => setPaymentDate(event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-emerald-500" /></label>
+              <label className="text-xs font-semibold text-slate-700">Payment mode<select value={paymentMode} onChange={(event) => setPaymentMode(event.target.value as PaymentRecord['mode'])} className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-emerald-500">{(['Bank Transfer', 'UPI', 'Cheque', 'Cash', 'Card', 'Other'] as PaymentRecord['mode'][]).map((mode) => <option key={mode}>{mode}</option>)}</select></label>
+              <label className="text-xs font-semibold text-slate-700">Reference number<input required value={paymentReference} onChange={(event) => setPaymentReference(event.target.value)} placeholder="UTR / cheque / transaction ID" className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-emerald-500" /></label>
+              <label className="text-xs font-semibold text-slate-700 sm:col-span-2">Notes<textarea rows={3} value={paymentNotes} onChange={(event) => setPaymentNotes(event.target.value)} placeholder="Optional internal note" className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-emerald-500" /></label>
+            </div>
+            <footer className="flex justify-end gap-2 border-t border-slate-200 px-5 py-4"><button type="button" onClick={() => setPaymentTarget(null)} className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">Cancel</button><button type="submit" className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-500">Save Payment</button></footer>
+          </form>
         </div>
       )}
 
@@ -495,7 +714,10 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
                   <p className="mt-1 text-sm font-bold">{documentPreview.customer}</p>
                   {documentPreview.contact && <p className="text-xs text-slate-600">{documentPreview.contact}</p>}
                   {documentPreview.email && <p className="text-xs text-slate-600">{documentPreview.email}</p>}
-                  <p className="text-xs text-slate-600">Billing address / GSTIN: to be provided</p>
+                  {documentPreview.billingAddress && <p className="whitespace-pre-wrap text-xs text-slate-600">{documentPreview.billingAddress}</p>}
+                  {(documentPreview.kind === 'TAX INVOICE' || documentPreview.kind === 'PROFORMA INVOICE') && (
+                    <p className="text-xs text-slate-600">GSTIN: {documentPreview.customerGstin || 'Unregistered'}</p>
+                  )}
                 </div>
               </div>
 
@@ -503,6 +725,7 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
                 <DocumentDetail label="Issue Date" value={formatDocumentDate(documentPreview.issueDate)} />
                 {documentPreview.dueDate && <DocumentDetail label="Due Date" value={formatDocumentDate(documentPreview.dueDate)} />}
                 {documentPreview.validUntil && <DocumentDetail label="Valid Until" value={formatDocumentDate(documentPreview.validUntil)} />}
+                {documentPreview.purchaseOrderNumber && <DocumentDetail label="Purchase Order" value={documentPreview.purchaseOrderNumber} />}
                 {documentPreview.status && <DocumentDetail label="Status" value={documentPreview.status} />}
               </div>
 
@@ -567,9 +790,15 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
 
               {documentPreview.kind === 'TAX INVOICE' && (
                 <div className="mt-6 grid grid-cols-1 gap-3 rounded-lg border border-slate-200 p-4 text-xs sm:grid-cols-3">
-                  <DocumentDetail label="Place of supply" value="To be confirmed" />
-                  <DocumentDetail label="HSN / SAC" value="To be configured" />
-                  <DocumentDetail label="Customer GSTIN" value="To be provided" />
+                  <DocumentDetail label="Place of supply" value={documentPreview.placeOfSupply || 'Not configured'} />
+                  <DocumentDetail label="HSN / SAC" value={documentPreview.sacCode || 'Not configured'} />
+                  <DocumentDetail label="Customer GSTIN" value={documentPreview.customerGstin || 'Unregistered'} />
+                  <DocumentDetail label="Nature of supply" value={documentPreview.supplyType || 'Not configured'} />
+                  <DocumentDetail label="Reverse charge" value={documentPreview.reverseCharge || 'No'} />
+                  <DocumentDetail label="GST rate" value={`${documentPreview.gstRate ?? 0}%`} />
+                  {documentPreview.irn && <DocumentDetail label="IRN" value={documentPreview.irn} />}
+                  {documentPreview.acknowledgementNumber && <DocumentDetail label="IRP acknowledgement" value={documentPreview.acknowledgementNumber} />}
+                  {documentPreview.acknowledgementDate && <DocumentDetail label="Acknowledgement date" value={documentPreview.acknowledgementDate} />}
                 </div>
               )}
 
@@ -615,14 +844,32 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
                     </tr>
                   </thead>
                   <tbody>
+                    {documentPreview.lineItems?.length ? documentPreview.lineItems.map((item) => {
+                      const lineAmount = item.quantity * item.rate;
+                      const lineTax = documentPreview.kind === 'TAX INVOICE' ? lineAmount * ((documentPreview.gstRate ?? 0) / 100) : 0;
+                      return <tr key={item.id} className="border-b border-slate-200">
+                        <td className="py-4 pr-3 font-semibold">{item.description}</td>
+                        {documentPreview.kind === 'TAX INVOICE' ? <>
+                          <td className="py-4 px-3 text-right">{item.hsnSac || documentPreview.sacCode || '—'}</td>
+                          <td className="py-4 px-3 text-right font-mono">{formatINR(lineAmount)}</td>
+                          <td className="py-4 px-3 text-right">{documentPreview.gstRate ?? 0}%</td>
+                          <td className="py-4 px-3 text-right font-mono">{formatINR(lineTax)}</td>
+                          <td className="py-4 pl-3 text-right font-mono font-bold">{formatINR(lineAmount + lineTax)}</td>
+                        </> : <>
+                          <td className="py-4 px-3 text-right">{item.quantity}</td>
+                          <td className="py-4 px-3 text-right font-mono">{formatINR(item.rate)}</td>
+                          <td className="py-4 pl-3 text-right font-mono font-bold">{formatINR(lineAmount)}</td>
+                        </>}
+                      </tr>;
+                    }) : (
                     <tr className="border-b border-slate-200">
                       <td className="py-4 pr-3 font-semibold">{documentPreview.kind === 'STATEMENT OF WORK' ? documentPreview.service : documentPreview.description}</td>
                       {documentPreview.kind === 'TAX INVOICE' ? (
                         <>
-                          <td className="py-4 px-3 text-right">To configure</td>
-                          <td className="py-4 px-3 text-right font-mono">{formatINR(documentPreview.amount)}</td>
-                          <td className="py-4 px-3 text-right">To configure</td>
-                          <td className="py-4 px-3 text-right">Pending</td>
+                          <td className="py-4 px-3 text-right">{documentPreview.sacCode || '—'}</td>
+                          <td className="py-4 px-3 text-right font-mono">{formatINR(Math.max(0, (documentPreview.taxableAmount ?? documentPreview.amount) - (documentPreview.discount ?? 0)))}</td>
+                          <td className="py-4 px-3 text-right">{documentPreview.gstRate ?? 0}%</td>
+                          <td className="py-4 px-3 text-right font-mono">{formatINR(documentPreview.totalTax ?? 0)}</td>
                           <td className="py-4 pl-3 text-right font-mono font-bold">{formatINR(documentPreview.amount)}</td>
                         </>
                       ) : (
@@ -632,7 +879,7 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
                           <td className="py-4 pl-3 text-right font-mono font-bold">{formatINR(documentPreview.amount)}</td>
                         </>
                       )}
-                    </tr>
+                    </tr>)}
                   </tbody>
                 </table>
               </div>
@@ -640,12 +887,15 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
               <div className="ml-auto mt-5 w-full max-w-sm space-y-2 text-xs">
                 <div className="flex justify-between gap-4 text-slate-600">
                   <span>{documentPreview.kind === 'TAX INVOICE' ? 'Taxable subtotal' : 'Subtotal'}</span>
-                  <span className="font-mono">{formatINR(documentPreview.amount)}</span>
+                  <span className="font-mono">{formatINR(Math.max(0, (documentPreview.taxableAmount ?? documentPreview.amount) - (documentPreview.discount ?? 0)))}</span>
                 </div>
                 {documentPreview.kind === 'TAX INVOICE' ? (
                   <>
-                    <div className="flex justify-between gap-4 text-slate-600"><span>CGST / SGST or IGST</span><span>Pending tax configuration</span></div>
-                    <div className="flex justify-between gap-4 text-slate-600"><span>Total tax</span><span>Not calculated</span></div>
+                    {(documentPreview.discount ?? 0) > 0 && <div className="flex justify-between gap-4 text-slate-600"><span>Discount</span><span className="font-mono">-{formatINR(documentPreview.discount ?? 0)}</span></div>}
+                    {(documentPreview.cgstAmount ?? 0) > 0 && <div className="flex justify-between gap-4 text-slate-600"><span>CGST ({(documentPreview.gstRate ?? 0) / 2}%)</span><span className="font-mono">{formatINR(documentPreview.cgstAmount ?? 0)}</span></div>}
+                    {(documentPreview.sgstAmount ?? 0) > 0 && <div className="flex justify-between gap-4 text-slate-600"><span>SGST ({(documentPreview.gstRate ?? 0) / 2}%)</span><span className="font-mono">{formatINR(documentPreview.sgstAmount ?? 0)}</span></div>}
+                    {(documentPreview.igstAmount ?? 0) > 0 && <div className="flex justify-between gap-4 text-slate-600"><span>IGST ({documentPreview.gstRate ?? 0}%)</span><span className="font-mono">{formatINR(documentPreview.igstAmount ?? 0)}</span></div>}
+                    <div className="flex justify-between gap-4 text-slate-600"><span>Total GST</span><span className="font-mono">{formatINR(documentPreview.totalTax ?? 0)}</span></div>
                   </>
                 ) : (
                   <div className="flex justify-between gap-4 text-slate-600">
@@ -700,6 +950,10 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
                   </div>
                 </section>
               )}
+              {(documentPreview.customerNotes || documentPreview.terms) && <section className="mt-7 grid gap-4 border-t border-slate-200 pt-4 text-xs sm:grid-cols-2">
+                {documentPreview.customerNotes && <div><h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Customer notes</h3><p className="mt-1 whitespace-pre-wrap text-slate-700">{documentPreview.customerNotes}</p></div>}
+                {documentPreview.terms && <div><h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Terms and conditions</h3><p className="mt-1 whitespace-pre-wrap text-slate-700">{documentPreview.terms}</p></div>}
+              </section>}
               <footer className="mt-6 border-t border-slate-200 pt-4 text-[10px] leading-relaxed text-slate-500">
                 {documentPreview.kind === 'PROFORMA INVOICE'
                   ? 'Proforma only; issue a tax invoice after supply according to applicable rules.'
