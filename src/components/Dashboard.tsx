@@ -767,7 +767,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       onClick={() => onQuickAction('proposal')}
                       className="mt-1.5 px-2.5 py-1 rounded-lg bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 text-[10px] font-semibold border border-teal-500/30 transition cursor-pointer"
                     >
-                      Send Renewal SOW
+                      Prepare Renewal Quotation
                     </button>
                   </div>
                 </div>

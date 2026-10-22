@@ -15,6 +15,7 @@ export interface RecordEditorField {
   max?: number;
   step?: number;
   fullWidth?: boolean;
+  helperText?: string;
 }
 
 interface RecordEditorModalProps {
@@ -23,6 +24,11 @@ interface RecordEditorModalProps {
   values: RecordEditorValues;
   onSave: (values: RecordEditorValues) => void;
   onClose: () => void;
+  onFieldChange?: (
+    key: string,
+    value: string | number,
+    currentValues: RecordEditorValues
+  ) => Partial<RecordEditorValues>;
 }
 
 export const RecordEditorModal: React.FC<RecordEditorModalProps> = ({
@@ -30,12 +36,16 @@ export const RecordEditorModal: React.FC<RecordEditorModalProps> = ({
   fields,
   values,
   onSave,
-  onClose
+  onClose,
+  onFieldChange
 }) => {
   const [draft, setDraft] = useState(values);
 
   const updateField = (key: string, value: string | number) => {
-    setDraft((current) => ({ ...current, [key]: value }));
+    setDraft((current) => {
+      const next = { ...current, [key]: value };
+      return { ...next, ...(onFieldChange?.(key, value, next) ?? {}) } as RecordEditorValues;
+    });
   };
 
   const updateLineItems = (key: string, items: CommercialLineItem[]) => {
@@ -143,6 +153,7 @@ export const RecordEditorModal: React.FC<RecordEditorModalProps> = ({
                     className={commonClass}
                   />
                 )}
+                {field.helperText && <p className="mt-1 text-[11px] text-slate-500">{field.helperText}</p>}
               </div>
             );
           })}

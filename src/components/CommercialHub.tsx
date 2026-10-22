@@ -28,7 +28,7 @@ const formatDocumentDate = (date: string) =>
   );
 
 interface FinancialDocument {
-  kind: 'QUOTATION' | 'STATEMENT OF WORK' | 'TAX INVOICE' | 'PROFORMA INVOICE';
+  kind: 'QUOTATION' | 'TAX INVOICE' | 'PROFORMA INVOICE';
   number: string;
   customer: string;
   contact?: string;
@@ -66,7 +66,7 @@ interface FinancialDocument {
   organization: OrganizationProfile;
 }
 
-export type CommercialPageType = 'proposals' | 'invoices' | 'proforma' | 'payments' | 'quotations';
+export type CommercialPageType = 'invoices' | 'proforma' | 'payments' | 'quotations';
 
 export interface CommercialHubProps {
   proposals: Proposal[];
@@ -118,9 +118,7 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
   const [paymentNotes, setPaymentNotes] = useState('');
 
   const currentTab = page;
-  const pageProposals = proposals.filter((proposal) => currentTab === 'quotations'
-    ? proposal.documentType === 'Quotation'
-    : (proposal.documentType ?? 'Proposal') === 'Proposal');
+  const pageProposals = proposals.filter((proposal) => proposal.documentType === 'Quotation');
   const visibleProposals = pageProposals.filter((proposal) => {
     const query = searchTerm.trim().toLowerCase();
     const matchesSearch = !query || [proposal.proposalNumber, proposal.title, proposal.service].some((value) => value.toLowerCase().includes(query));
@@ -161,12 +159,6 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
       description: 'Prepare, review, and issue customer quotations before commercial approval.',
       action: 'New Quotation'
     },
-    proposals: {
-      title: 'Proposals (SOW)',
-      badge: 'Scope & Delivery',
-      description: 'Manage statements of work, deliverables, validity, and customer approval.',
-      action: 'New Proposal'
-    },
     proforma: {
       title: 'Proforma Invoices',
       badge: 'Pre-Tax Documents',
@@ -186,7 +178,7 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
       action: null
     }
   }[currentTab];
-  const summaryMetrics = currentTab === 'quotations' || currentTab === 'proposals'
+  const summaryMetrics = currentTab === 'quotations'
     ? [
         { label: 'Total Documents', value: String(visibleProposals.length), detail: `${pageConfig.title} on record`, valueClass: 'text-slate-900' },
         { label: 'Commercial Value', value: formatINR(proposalValue), detail: 'Combined value before tax', valueClass: 'text-[#ff5c00]' },
@@ -221,13 +213,11 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
     ['UPI ID', organization.upiId]
   ].filter(([, value]) => Boolean(value));
 
-  const openProposalPreview = (proposal: Proposal, kind: 'QUOTATION' | 'STATEMENT OF WORK') => {
+  const openQuotationPreview = (proposal: Proposal) => {
     const lead = leads.find((item) => item.id === proposal.leadId);
     setDocumentPreview({
-      kind,
-      number: kind === 'STATEMENT OF WORK'
-        ? `SOW-${proposal.proposalNumber.replace(/^PROP-/, '')}`
-        : proposal.proposalNumber,
+      kind: 'QUOTATION',
+      number: proposal.proposalNumber,
       customer: lead?.company ?? 'Customer details to be completed',
       contact: lead?.name,
       email: lead?.email,
@@ -245,10 +235,6 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
       organization
     });
   };
-
-  const openQuotationPreview = (proposal: Proposal) => openProposalPreview(proposal, 'QUOTATION');
-
-  const openSowPreview = (proposal: Proposal) => openProposalPreview(proposal, 'STATEMENT OF WORK');
 
   const openInvoicePreview = (invoice: Invoice) => {
     setDocumentPreview({
@@ -324,7 +310,7 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
         {pageConfig.action && (
           <button
             type="button"
-            onClick={() => currentTab === 'quotations' || currentTab === 'proposals'
+            onClick={() => currentTab === 'quotations'
               ? onNewProposal()
               : onNewInvoice(currentTab === 'proforma' ? 'Proforma' : 'Tax Invoice')}
             className="flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-cyan-600 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-indigo-600/30 transition hover:from-indigo-500 hover:to-cyan-500 active:scale-95"
@@ -353,7 +339,7 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
         <div className="flex items-center gap-2">
           <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} aria-label="Filter by status" className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 outline-none focus:border-[#ff6600]">
             <option value="All">All statuses</option>
-            {(currentTab === 'quotations' || currentTab === 'proposals'
+            {(currentTab === 'quotations'
               ? ['Draft', 'Sent', 'Client Review', 'Accepted', 'Declined']
               : ['Draft', 'Sent', 'Outstanding', 'Partially Paid', 'Paid', 'Overdue', 'Voided']
             ).map((status) => <option key={status} value={status}>{status}</option>)}
@@ -376,7 +362,7 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
       )}
 
       {/* Page contents */}
-      {(currentTab === 'proposals' || currentTab === 'quotations') && (
+      {currentTab === 'quotations' && (
         <div className="rounded-2xl bg-[#111827]/80 border border-slate-800 shadow-md overflow-hidden">
           <div className="overflow-x-auto">
           <table className="min-w-[920px] w-full text-left text-xs border-collapse">
@@ -418,7 +404,7 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
                   </td>
                   <td className="py-3 px-4 text-center">
                     <div className="flex items-center justify-center gap-1">
-                      <button type="button" onClick={() => currentTab === 'proposals' ? openSowPreview(prop) : openQuotationPreview(prop)} className="rounded p-1.5 text-slate-400 hover:bg-slate-700 hover:text-white" title="Preview document" aria-label={`Preview document ${prop.proposalNumber}`}>
+                      <button type="button" onClick={() => openQuotationPreview(prop)} className="rounded p-1.5 text-slate-400 hover:bg-slate-700 hover:text-white" title="Preview document" aria-label={`Preview document ${prop.proposalNumber}`}>
                         <Eye className="h-3.5 w-3.5" />
                       </button>
                       {prop.status === 'Draft' && (
@@ -441,7 +427,7 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
                         </>
                       )}
                       {prop.status === 'Accepted' && (
-                        <button type="button" onClick={() => onConvertProposalToInvoice(prop, currentTab === 'quotations' ? 'Proforma' : 'Tax Invoice')} className="rounded p-1.5 text-slate-400 hover:bg-orange-500/10 hover:text-orange-300" title={currentTab === 'quotations' ? 'Convert to proforma invoice' : 'Convert to tax invoice'} aria-label={`Convert ${prop.proposalNumber} to invoice`}>
+                        <button type="button" onClick={() => onConvertProposalToInvoice(prop, 'Proforma')} className="rounded p-1.5 text-slate-400 hover:bg-orange-500/10 hover:text-orange-300" title="Convert to proforma invoice" aria-label={`Convert ${prop.proposalNumber} to invoice`}>
                           <ArrowRight className="h-3.5 w-3.5" />
                         </button>
                       )}
@@ -741,47 +727,6 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
                 </section>
               )}
 
-              {documentPreview.kind === 'STATEMENT OF WORK' && (
-                <section className="mt-6 space-y-4">
-                  <div className="border-b border-slate-200 pb-3">
-                    <h3 className="text-sm font-extrabold uppercase tracking-wide">Statement of Work</h3>
-                    <p className="mt-1 text-sm font-semibold text-slate-700">{documentPreview.title}</p>
-                  </div>
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <div>
-                      <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Services</h4>
-                      <p className="mt-1 text-xs leading-relaxed text-slate-700">{documentPreview.service}</p>
-                    </div>
-                    <div>
-                      <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Scope and objectives</h4>
-                      <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-slate-700">
-                        {documentPreview.scope || 'Project scope and objectives must be confirmed with the customer before execution.'}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 gap-4 rounded-lg bg-slate-50 p-4 sm:grid-cols-3">
-                    <div>
-                      <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Deliverables</h4>
-                      <p className="mt-1 text-xs text-slate-700">{documentPreview.title}</p>
-                    </div>
-                    <div>
-                      <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Milestones and schedule</h4>
-                      <p className="mt-1 text-xs text-slate-700">To be agreed in the project plan.</p>
-                    </div>
-                    <div>
-                      <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Acceptance</h4>
-                      <p className="mt-1 text-xs text-slate-700">Customer acceptance criteria and review window to be agreed before work begins.</p>
-                    </div>
-                  </div>
-                  <div>
-                    <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Responsibilities and assumptions</h4>
-                    <p className="mt-1 text-xs leading-relaxed text-slate-700">
-                      The provider delivers the services listed above. The customer supplies timely access, information, and approvals. Any exclusions or dependencies must be agreed in writing.
-                    </p>
-                  </div>
-                </section>
-              )}
-
               {documentPreview.kind === 'PROFORMA INVOICE' && (
                 <div className="mt-6 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-900">
                   Proforma invoice only. This is a payment request and is not a tax invoice or proof of tax payment.
@@ -863,7 +808,7 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
                       </tr>;
                     }) : (
                     <tr className="border-b border-slate-200">
-                      <td className="py-4 pr-3 font-semibold">{documentPreview.kind === 'STATEMENT OF WORK' ? documentPreview.service : documentPreview.description}</td>
+                      <td className="py-4 pr-3 font-semibold">{documentPreview.description}</td>
                       {documentPreview.kind === 'TAX INVOICE' ? (
                         <>
                           <td className="py-4 px-3 text-right">{documentPreview.sacCode || '—'}</td>
@@ -913,8 +858,6 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
                       ? 'Balance due'
                       : documentPreview.kind === 'QUOTATION'
                       ? 'Quoted amount before tax'
-                      : documentPreview.kind === 'STATEMENT OF WORK'
-                      ? 'SOW value before tax'
                       : documentPreview.kind === 'PROFORMA INVOICE'
                       ? 'Amount requested'
                       : 'Recorded invoice value'}
@@ -934,19 +877,6 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
                   <div className="mt-8 grid grid-cols-2 gap-8 text-[10px] text-slate-500">
                     <div className="border-t border-slate-300 pt-2">For {documentPreview.customer}: name, signature, date</div>
                     <div className="border-t border-slate-300 pt-2">For {documentPreview.organization.legalName}: name, signature, date</div>
-                  </div>
-                </section>
-              )}
-              {documentPreview.kind === 'STATEMENT OF WORK' && (
-                <section className="mt-8 border-t border-slate-200 pt-4">
-                  <h3 className="text-xs font-bold uppercase tracking-wide">Authorization</h3>
-                  <p className="mt-1 text-[10px] leading-relaxed text-slate-500">
-                    This SOW becomes effective when signed by both parties. Changes to scope, delivery dates, or fees require written approval.
-                    Payment terms: {documentPreview.organization.paymentTerms || 'to be agreed'}.
-                  </p>
-                  <div className="mt-8 grid grid-cols-2 gap-8 text-[10px] text-slate-500">
-                    <div className="border-t border-slate-300 pt-2">Customer authorized signatory / date</div>
-                    <div className="border-t border-slate-300 pt-2">Provider authorized signatory / date</div>
                   </div>
                 </section>
               )}

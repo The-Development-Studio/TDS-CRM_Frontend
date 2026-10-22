@@ -35,11 +35,11 @@ const request = async <T,>(url: string, init?: RequestInit): Promise<T> => {
 
 const resourcePages: Record<keyof typeof collectionStorage, string[]> = {
   leads: ["leads", "portal", "reports"],
-  customers: ["customers", "portal"],
+  customers: ["customers", "portal", "costing"],
   activities: ["activities", "reports"],
   opportunities: ["pipeline", "reports"],
-  proposals: ["quotations", "proposals"],
-  invoices: ["proforma", "invoices", "payments"],
+  proposals: ["quotations", "costing"],
+  invoices: ["proforma", "invoices", "payments", "costing"],
   payments: ["payments", "invoices"],
   contracts: ["amc", "portal"]
 };

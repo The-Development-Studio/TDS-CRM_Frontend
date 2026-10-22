@@ -265,7 +265,7 @@ export const CustomerMaster: React.FC<CustomerMasterProps> = ({
                   </td>
 
                   <td className="py-3 px-4 text-center font-mono text-cyan-300">
-                    {cust.activeContracts} SOWs
+                    {cust.activeContracts} Contracts
                   </td>
 
                   <td className="py-3 px-4">

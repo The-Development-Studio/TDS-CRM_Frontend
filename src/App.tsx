@@ -36,7 +36,7 @@ const Customer360View = lazy(() => import('./components/Customer360View').then((
 const SalesPipeline = lazy(() => import('./components/SalesPipeline').then(({ SalesPipeline }) => ({ default: SalesPipeline })));
 const SalesReports = lazy(() => import('./components/SalesReports'));
 const QuotationsPage = lazy(() => import('./components/QuotationsPage'));
-const ProposalsPage = lazy(() => import('./components/ProposalsPage'));
+const CostingAdvisor = lazy(() => import('./components/CostingAdvisor'));
 const ProformaInvoicesPage = lazy(() => import('./components/ProformaInvoicesPage'));
 const TaxInvoicesPage = lazy(() => import('./components/TaxInvoicesPage'));
 const PaymentRecordsPage = lazy(() => import('./components/PaymentRecordsPage'));
@@ -64,7 +64,11 @@ type EditableRecord =
   | { type: 'invoice'; record: Invoice }
   | { type: 'amc'; record: AMCRenewal };
 
-const getEditorConfig = (item: EditableRecord, assignees: StaffAssignee[] = []): { title: string; fields: RecordEditorField[] } => {
+const getEditorConfig = (
+  item: EditableRecord,
+  assignees: StaffAssignee[] = [],
+  customers: Customer[] = []
+): { title: string; fields: RecordEditorField[] } => {
   switch (item.type) {
     case 'lead':
       return {
@@ -169,12 +173,8 @@ const getEditorConfig = (item: EditableRecord, assignees: StaffAssignee[] = []):
       };
     case 'proposal':
       return {
-        title: 'Edit draft quotation / SOW',
+        title: 'Edit draft quotation',
         fields: [
-          { key: 'documentType', label: 'Document type', type: 'select', options: [
-            { label: 'Quotation', value: 'Quotation' },
-            { label: 'Proposal / SOW', value: 'Proposal' }
-          ], required: true },
           { key: 'proposalNumber', label: 'Document number', required: true },
           { key: 'title', label: 'Document title', required: true, fullWidth: true },
           { key: 'service', label: 'Service' },
@@ -186,7 +186,17 @@ const getEditorConfig = (item: EditableRecord, assignees: StaffAssignee[] = []):
           { key: 'status', label: 'Status', type: 'select', options: [{ label: 'Draft', value: 'Draft' }] }
         ]
       };
-    case 'invoice':
+    case 'invoice': {
+      const customerOptions = [
+        { label: 'Choose a customer', value: '' },
+        ...customers.map((customer) => ({
+          label: `${customer.companyName} (${customer.customerCode})`,
+          value: customer.companyName
+        })),
+        ...(item.record.customer && !customers.some((customer) => customer.companyName === item.record.customer)
+          ? [{ label: `${item.record.customer} (not in customer master)`, value: item.record.customer }]
+          : [])
+      ];
       return {
         title: item.record.type === 'Proforma' ? 'Proforma invoice' : 'GST tax invoice',
         fields: [
@@ -195,7 +205,14 @@ const getEditorConfig = (item: EditableRecord, assignees: StaffAssignee[] = []):
             { label: 'Tax Invoice', value: 'Tax Invoice' },
             { label: 'Proforma Invoice', value: 'Proforma' }
           ] },
-          { key: 'customer', label: 'Customer', required: true },
+          {
+            key: 'customer',
+            label: 'Customer',
+            type: 'select',
+            options: customerOptions,
+            required: true,
+            helperText: 'Selecting a customer fills the GSTIN, billing address, place of supply, and supply type.'
+          },
           { key: 'customerGstin', label: 'Customer GSTIN' },
           { key: 'billingAddress', label: 'Billing address', type: 'textarea', fullWidth: true },
           { key: 'description', label: 'Service description', type: 'textarea', fullWidth: true, required: true },
@@ -232,6 +249,7 @@ const getEditorConfig = (item: EditableRecord, assignees: StaffAssignee[] = []):
           ] : [])
         ]
       };
+    }
     case 'amc':
       return {
         title: 'AMC contract',
@@ -492,10 +510,10 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
       case 'proposal':
         {
           const proposal = record as Proposal;
-          const prefix = proposal.documentType === 'Quotation' ? 'QTN' : 'PROP';
+          const prefix = 'QTN';
           const suffix = proposal.proposalNumber.replace(/^(QTN|PROP|SOW)-/, '');
           const lineItems = proposal.lineItems?.length ? proposal.lineItems : [{ id: crypto.randomUUID(), description: proposal.service || proposal.title, hsnSac: '', quantity: 1, rate: Number(proposal.amount || 0) }];
-          const normalizedProposal = { ...proposal, lineItems, amount: lineItems.reduce((sum, item) => sum + item.quantity * item.rate, 0), proposalNumber: `${prefix}-${suffix}` };
+          const normalizedProposal = { ...proposal, documentType: 'Quotation' as const, lineItems, amount: lineItems.reduce((sum, item) => sum + item.quantity * item.rate, 0), proposalNumber: `${prefix}-${suffix}` };
           setProposals((current) => current.some((item) => item.id === editingRecord.record.id)
             ? current.map((item) => item.id === editingRecord.record.id ? normalizedProposal : item)
             : [normalizedProposal, ...current]);
@@ -911,9 +929,9 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
     setCurrentView('pipeline');
   };
 
-  const handleCreateProposalFromLead = (lead: Lead, destination: 'proposals' | 'quotations' = 'proposals') => {
-    const documentType: Proposal['documentType'] = destination === 'quotations' ? 'Quotation' : 'Proposal';
-    const prefix = documentType === 'Quotation' ? 'QTN' : 'PROP';
+  const handleCreateProposalFromLead = (lead: Lead) => {
+    const documentType: Proposal['documentType'] = 'Quotation';
+    const prefix = 'QTN';
     const proposal: Proposal = {
       id: `prop-${Date.now()}`,
       proposalNumber: `${prefix}-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`,
@@ -930,7 +948,7 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
       terms: organization.paymentTerms || 'Prices are valid until the validity date shown above.'
     };
     setEditingRecord({ type: 'proposal', record: proposal });
-    setCurrentView(destination);
+    setCurrentView('quotations');
   };
 
   const handleMovePipelineStage = (oppId: string, targetStage: string) => {
@@ -948,7 +966,7 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
   };
 
   const handleCreateInvoice = (invoiceType: Invoice['type'] = 'Tax Invoice', selectedCustomer?: Customer) => {
-    const customer = selectedCustomer ?? customers[0];
+    const customer = selectedCustomer;
     const prefix = invoiceType === 'Proforma' ? 'PI' : 'INV';
     const newInv: Invoice = {
       id: `inv-${Date.now()}`,
@@ -985,7 +1003,7 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
 
   const handleQuickCreate = (type: string) => {
     const requiredPage: Record<string, string> = {
-      lead: 'leads', activity: 'activities', opportunity: 'pipeline', proposal: 'proposals',
+      lead: 'leads', activity: 'activities', opportunity: 'pipeline', proposal: 'quotations',
       invoice: 'invoices', amc: 'amc', customer: 'customers'
     };
     if (requiredPage[type] && !allowedPages.includes(requiredPage[type])) {
@@ -1115,7 +1133,7 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
           opportunities={allowedPages.includes('pipeline') ? opportunities : []}
           invoices={allowedPages.some((page) => ['proforma', 'invoices', 'payments'].includes(page)) ? invoices : []}
           activities={allowedPages.includes('activities') ? activities : []}
-          proposals={allowedPages.some((page) => ['quotations', 'proposals'].includes(page)) ? proposals : []}
+          proposals={allowedPages.includes('quotations') ? proposals : []}
           amcRenewals={allowedPages.includes('amc') ? amcRenewals : []}
           accountName={staffUser.name}
           accountEmail={staffUser.email}
@@ -1233,7 +1251,7 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
               onCreateInvoice={() => handleCreateInvoice('Tax Invoice', currentCustomer)}
               onCreateQuotation={() => {
                 const lead = leads.find((item) => item.company === currentCustomer.companyName);
-                if (lead) handleCreateProposalFromLead(lead, 'quotations');
+                if (lead) handleCreateProposalFromLead(lead);
                 else alert('Create or link a lead for this customer before preparing a quotation.');
               }}
               onOpenWhatsApp={() => setWhatsAppRecipient({ name: currentCustomer.primaryContact || currentCustomer.companyName, company: currentCustomer.companyName, phone: currentCustomer.phone, owner: currentCustomer.relationshipManager || staffUser.name })}
@@ -1266,12 +1284,14 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
               {...commercialPageProps}
               onNewProposal={() => {
                 const lead = leads[0];
-                if (lead) handleCreateProposalFromLead(lead, 'quotations');
+                if (lead) handleCreateProposalFromLead(lead);
               }}
             />
           )}
 
-          {currentView === 'proposals' && <ProposalsPage {...commercialPageProps} />}
+          {currentView === 'costing' && (
+            <CostingAdvisor customers={customers} leads={leads} proposals={proposals} invoices={invoices} />
+          )}
 
           {currentView === 'proforma' && <ProformaInvoicesPage {...commercialPageProps} />}
 
@@ -1349,7 +1369,7 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
       {showMyProfile && <MyProfile user={staffUser} onClose={() => setShowMyProfile(false)} onSaved={async (user) => { onStaffUserChange(user); setShowMyProfile(false); }} />}
       {whatsAppRecipient && <WhatsAppComposerModal recipient={whatsAppRecipient} onClose={() => setWhatsAppRecipient(null)} />}
       {editingRecord && (() => {
-        const editorConfig = getEditorConfig(editingRecord, staffAssignees);
+        const editorConfig = getEditorConfig(editingRecord, staffAssignees, customers);
         const editableFields = editorConfig.fields.filter((field) => {
           if (editingRecord.type === 'opportunity' && ['Won', 'Lost'].includes(editingRecord.record.stage) && field.key === 'amount') return false;
           if (editingRecord.type === 'lead' && staffUser.role === 'user' && field.key === 'leadOwner') return false;
@@ -1363,6 +1383,31 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
             values={editingRecord.record as unknown as RecordEditorValues}
             onSave={handleSaveEditedRecord}
             onClose={() => setEditingRecord(null)}
+            onFieldChange={editingRecord.type === 'invoice'
+              ? (key, value) => {
+                if (key !== 'customer') return {};
+                const selectedCustomer = customers.find((customer) => customer.companyName === String(value));
+                if (!selectedCustomer) {
+                  return {
+                    customerGstin: '',
+                    billingAddress: '',
+                    placeOfSupply: '',
+                    supplyType: 'Intra-state'
+                  };
+                }
+                const supplyType: Invoice['supplyType'] = selectedCustomer.state
+                  && organization.state
+                  && selectedCustomer.state.toLowerCase() !== organization.state.toLowerCase()
+                  ? 'Inter-state'
+                  : 'Intra-state';
+                return {
+                  customerGstin: selectedCustomer.customerGstin || '',
+                  billingAddress: selectedCustomer.billingAddress || '',
+                  placeOfSupply: selectedCustomer.state || organization.state,
+                  supplyType
+                };
+              }
+              : undefined}
           />
         );
       })()}

@@ -119,7 +119,7 @@ export const Header: React.FC<HeaderProps> = ({
     { id: 'lead', page: 'leads', label: 'New Lead', icon: User, color: 'text-indigo-400', desc: 'Capture customer inquiries' },
     { id: 'opportunity', page: 'pipeline', label: 'New Opportunity', icon: Briefcase, color: 'text-purple-400', desc: 'Deal pipeline entry' },
     { id: 'activity', page: 'activities', label: 'New Activity', icon: Calendar, color: 'text-emerald-400', desc: 'Call, meeting, or email' },
-    { id: 'proposal', page: 'proposals', label: 'New Proposal', icon: FileText, color: 'text-pink-400', desc: 'SOW / Quotation' },
+    { id: 'proposal', page: 'quotations', label: 'New Quotation', icon: FileText, color: 'text-pink-400', desc: 'Prepare a customer quotation' },
     { id: 'invoice', page: 'invoices', label: 'New Invoice', icon: Receipt, color: 'text-amber-400', desc: 'Proforma or Tax invoice' },
     { id: 'amc', page: 'amc', label: 'New AMC Contract', icon: RefreshCw, color: 'text-teal-400', desc: 'Register a renewal contract' }
   ].filter((option) => allowedPages.includes(option.page));
@@ -139,12 +139,12 @@ export const Header: React.FC<HeaderProps> = ({
     }));
 
   const notifications = [
-    ...proposals.filter((proposal) => proposal.status === 'Accepted').map((proposal) => ({
+    ...proposals.filter((proposal) => proposal.documentType === 'Quotation' && proposal.status === 'Accepted').map((proposal) => ({
       id: `proposal-${proposal.id}`,
       title: 'Quotation accepted',
       desc: `${proposal.proposalNumber} · ${proposal.title} · ${formatINR(proposal.amount)}`,
       time: proposal.sentDate,
-      target: 'proposals'
+      target: 'quotations'
     })),
     ...invoices.filter((invoice) => invoice.paidAmount > 0).map((invoice) => ({
       id: `invoice-${invoice.id}`,
@@ -368,7 +368,7 @@ export const Header: React.FC<HeaderProps> = ({
                 {notifications.map((n) => (
                   <button type="button" key={n.id} onClick={() => {
                     if (n.target === 'activities') onNavigate('activities');
-                    else if (n.target === 'payments' || n.target === 'proposals' || n.target === 'amc') onNavigate(n.target);
+                    else if (n.target === 'payments' || n.target === 'quotations' || n.target === 'amc') onNavigate(n.target);
                     else onSearchSelectLead(n.target);
                     setNotificationsOpen(false);
                     setReadNotificationIds((current) => [...current, n.id]);

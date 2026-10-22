@@ -6,7 +6,7 @@ export const pageAccessOptions = [
   { id: "pipeline", label: "Sales Pipeline", group: "Sales" },
   { id: "reports", label: "Sales Reports", group: "Sales" },
   { id: "quotations", label: "Quotations", group: "Commercial" },
-  { id: "proposals", label: "Proposals (SOW)", group: "Commercial" },
+  { id: "costing", label: "Costing Adviser", group: "Commercial" },
   { id: "proforma", label: "Proforma Invoices", group: "Commercial" },
   { id: "invoices", label: "Tax Invoices", group: "Commercial" },
   { id: "payments", label: "Payment Records", group: "Commercial" },
@@ -33,7 +33,7 @@ export const resourcePageAccess: Record<string, PageAccessId> = {
   customers: "customers",
   activities: "activities",
   opportunities: "pipeline",
-  proposals: "proposals",
+  proposals: "quotations",
   invoices: "invoices",
   contracts: "amc"
 };

@@ -6,7 +6,7 @@ import {
   CalendarCheck,
   GitBranch,
   FileText,
-  FileCheck2,
+  BrainCircuit,
   Receipt,
   CreditCard,
   Headphones,
@@ -62,7 +62,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       heading: 'Commercial',
       items: [
         { id: 'quotations', label: 'Quotations', icon: FileText },
-        { id: 'proposals', label: 'Proposals (SOW)', icon: FileCheck2 },
+        { id: 'costing', label: 'Costing Adviser', icon: BrainCircuit },
         { id: 'proforma', label: 'Proforma Invoices', icon: Receipt },
         { id: 'invoices', label: 'Tax Invoices', icon: Receipt },
         { id: 'payments', label: 'Payment Records', icon: CreditCard }

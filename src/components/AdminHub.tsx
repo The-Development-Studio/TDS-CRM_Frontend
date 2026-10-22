@@ -77,14 +77,14 @@ const initialTaxRules: AdminRecord[] = [
 
 const initialSequences: AdminRecord[] = [
   { id: 'lead-default', document: 'Lead', format: 'LD-{YYYY}-{SEQ}', nextNumber: 1, status: 'Active' },
-  { id: 'proposal-default', document: 'Proposal', format: 'PROP-{YYYY}-{SEQ}', nextNumber: 1, status: 'Active' },
+  { id: 'quotation-default', document: 'Quotation', format: 'QTN-{YYYY}-{SEQ}', nextNumber: 1, status: 'Active' },
   { id: 'invoice-default', document: 'Tax Invoice', format: 'INV-{YYYY}-{SEQ}', nextNumber: 1, status: 'Active' }
 ];
 
 const initialApprovalRules: AdminRecord[] = [
   {
-    id: 'proposal-default',
-    document: 'Proposal',
+    id: 'quotation-default',
+    document: 'Quotation',
     threshold: 50000,
     approvers: 'VP of Sales, Finance Controller',
     status: 'Active'

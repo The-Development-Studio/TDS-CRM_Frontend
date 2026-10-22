@@ -72,7 +72,7 @@ export const Lead360View: React.FC<Lead360ViewProps> = ({
   // Filter items specific to this lead
   const leadActivities = activities.filter((a) => a.leadId === lead.id);
   const leadOpportunities = opportunities.filter((o) => o.leadId === lead.id);
-  const leadProposals = proposals.filter((p) => p.leadId === lead.id);
+  const leadProposals = proposals.filter((p) => p.leadId === lead.id && p.documentType === 'Quotation');
 
   const handleAddNote = () => {
     if (!newNote.trim()) return;
@@ -547,18 +547,18 @@ export const Lead360View: React.FC<Lead360ViewProps> = ({
       {activeTab === 'Proposals' && (
         <div className="p-5 rounded-2xl bg-[#111827]/80 border border-slate-800 space-y-4">
           <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-            <h3 className="text-sm font-bold text-white">Quotations & Proposals (SOW)</h3>
+            <h3 className="text-sm font-bold text-white">Quotations</h3>
             <button
               onClick={() => onCreateProposal(lead)}
               className="px-3 py-1.5 rounded-xl bg-pink-600 hover:bg-pink-500 text-white text-xs font-semibold cursor-pointer"
             >
-              + Generate Proposal
+              + Generate Quotation
             </button>
           </div>
 
           <div className="space-y-3">
             {leadProposals.length === 0 ? (
-              <p className="text-xs text-slate-400 py-6 text-center">No proposal generated yet for this lead.</p>
+              <p className="text-xs text-slate-400 py-6 text-center">No quotation generated yet for this lead.</p>
             ) : (
               leadProposals.map((prop) => (
                 <div key={prop.id} className="p-4 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between">
