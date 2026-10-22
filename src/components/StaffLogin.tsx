@@ -6,7 +6,8 @@ export interface StaffUser {
   id: string;
   email: string;
   name: string;
-  role: "admin" | "staff";
+  role: "manager" | "user";
+  reportingManagerId: string | null;
   jobTitle: string;
   department: string;
   phone: string;
@@ -192,7 +193,7 @@ export function StaffLogin({ onAuthenticated }: StaffLoginProps) {
                 <label className="staff-login-label block text-sm font-semibold">Work email
                   <input required type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@company.com" className="staff-login-input mt-2 h-12 w-full rounded-xl border px-3.5 text-sm font-normal" />
                 </label>
-                <label className="staff-login-label block text-sm font-semibold">Bootstrap administrator key <span className="font-normal text-slate-400">(first account only)</span>
+                <label className="staff-login-label block text-sm font-semibold">Bootstrap manager key <span className="font-normal text-slate-400">(first account only)</span>
                   <PasswordInput value={adminKey} onChange={setAdminKey} autoComplete="off" required={false} />
                 </label>
               </>}

@@ -4,6 +4,7 @@ export const pageAccessOptions = [
   { id: "customers", label: "Companies / Customers", group: "Sales" },
   { id: "activities", label: "Activities", group: "Sales" },
   { id: "pipeline", label: "Sales Pipeline", group: "Sales" },
+  { id: "reports", label: "Sales Reports", group: "Sales" },
   { id: "quotations", label: "Quotations", group: "Commercial" },
   { id: "proposals", label: "Proposals (SOW)", group: "Commercial" },
   { id: "proforma", label: "Proforma Invoices", group: "Commercial" },

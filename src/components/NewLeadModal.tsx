@@ -18,13 +18,17 @@ interface NewLeadModalProps {
   onClose: () => void;
   onSubmit: (lead: Partial<Lead>) => void;
   assignees: StaffAssignee[];
+  defaultOwner?: string;
+  lockOwner?: boolean;
 }
 
 export const NewLeadModal: React.FC<NewLeadModalProps> = ({
   isOpen,
   onClose,
   onSubmit,
-  assignees
+  assignees,
+  defaultOwner = '',
+  lockOwner = false
 }) => {
   const [formData, setFormData] = useState({
     name: '',
@@ -40,7 +44,7 @@ export const NewLeadModal: React.FC<NewLeadModalProps> = ({
     serviceInterest: '',
     estimatedBudget: 50000,
     priority: 'High' as Lead['priority'],
-    leadOwner: '',
+    leadOwner: defaultOwner,
     nextFollowUpDate: new Date().toISOString().split('T')[0],
     nextFollowUpTime: '11:00 AM',
     notes: ''
@@ -320,9 +324,10 @@ export const NewLeadModal: React.FC<NewLeadModalProps> = ({
                 <select
                   value={formData.leadOwner}
                   onChange={(e) => setFormData({ ...formData, leadOwner: e.target.value })}
+                  disabled={lockOwner}
                   className="w-full bg-slate-900 border border-slate-700/80 rounded-xl p-2.5 text-white"
                 >
-                  <option value="">Unassigned</option>
+                  {!lockOwner && <option value="">Unassigned</option>}
                   {assignees.map((assignee) => <option key={assignee.id} value={assignee.name}>{assignee.name} ({assignee.email})</option>)}
                 </select>
               </div>

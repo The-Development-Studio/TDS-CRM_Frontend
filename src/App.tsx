@@ -34,6 +34,7 @@ const Lead360View = lazy(() => import('./components/Lead360View').then(({ Lead36
 const CustomerMaster = lazy(() => import('./components/CustomerMaster').then(({ CustomerMaster }) => ({ default: CustomerMaster })));
 const Customer360View = lazy(() => import('./components/Customer360View').then(({ Customer360View }) => ({ default: Customer360View })));
 const SalesPipeline = lazy(() => import('./components/SalesPipeline').then(({ SalesPipeline }) => ({ default: SalesPipeline })));
+const SalesReports = lazy(() => import('./components/SalesReports'));
 const QuotationsPage = lazy(() => import('./components/QuotationsPage'));
 const ProposalsPage = lazy(() => import('./components/ProposalsPage'));
 const ProformaInvoicesPage = lazy(() => import('./components/ProformaInvoicesPage'));
@@ -254,7 +255,7 @@ const getEditorConfig = (item: EditableRecord, assignees: StaffAssignee[] = []):
 };
 
 function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUser; onStaffUserChange: (user: StaffUser) => void; onLogout: () => Promise<void> }) {
-  const allowedPages = staffUser.role === 'admin' ? allPageAccessIds : staffUser.pageAccess;
+  const allowedPages = staffUser.role === 'manager' ? allPageAccessIds : staffUser.pageAccess;
   const [currentView, setCurrentView] = useState<string>(() => allowedPages[0] ?? 'dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
@@ -400,7 +401,7 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
   // Handlers
   const handleNavigate = (view: string) => {
     if (!allowedPages.includes(pageForView(view))) {
-      setSyncError('You do not have access to that page. Ask an administrator to update your page access.');
+      setSyncError('You do not have access to that page. Ask a manager to update your page access.');
       return;
     }
     setSyncError('');
@@ -477,11 +478,13 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
         }
         break;
       case 'activity':
+        if (staffUser.role === 'user') (record as Activity).user = staffUser.name;
         setActivities((current) => current.some((item) => item.id === editingRecord.record.id)
           ? current.map((item) => item.id === editingRecord.record.id ? record as Activity : item)
           : [record as Activity, ...current]);
         break;
       case 'opportunity':
+        if (staffUser.role === 'user') (record as Opportunity).owner = staffUser.name;
         setOpportunities((current) => current.some((item) => item.id === editingRecord.record.id)
           ? current.map((item) => item.id === editingRecord.record.id ? record as Opportunity : item)
           : [record as Opportunity, ...current]);
@@ -747,7 +750,10 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
   };
 
   const handleAddNewLead = (newLeadData: Partial<Lead>) => {
-    const fullLead = newLeadData as Lead;
+    const fullLead = {
+      ...newLeadData,
+      ...(staffUser.role === 'user' ? { leadOwner: staffUser.name, status: 'Assigned' as const } : {})
+    } as Lead;
     setLeads((current) => [fullLead, ...current]);
     const createdAt = Date.now();
     const newActivities: Activity[] = [
@@ -804,7 +810,9 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
       existingIds.add(id);
       if (email) existingEmails.add(email);
       if (phone) existingPhones.add(phone);
-      accepted.push(lead);
+      accepted.push(staffUser.role === 'user'
+        ? { ...lead, leadOwner: staffUser.name, status: lead.status === 'New' ? 'Assigned' : lead.status }
+        : lead);
     });
     if (accepted.length) {
       setLeads((current) => [...accepted, ...current]);
@@ -841,7 +849,7 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
       description: activity.description || '',
       date: activity.date || new Date().toISOString().split('T')[0],
       time: activity.time || '12:00 PM',
-      user: activity.user || 'Unassigned',
+      user: staffUser.role === 'user' ? staffUser.name : activity.user || 'Unassigned',
       priority: activity.priority || 'High',
       status: activity.status || 'Scheduled',
       category: activity.category || 'Today'
@@ -999,7 +1007,7 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
         amount: lead?.estimatedBudget ?? 0,
         expectedClose: new Date().toISOString().split('T')[0],
         probability: 50,
-        owner: lead?.leadOwner ?? organization.founderName
+        owner: staffUser.role === 'user' ? staffUser.name : lead?.leadOwner ?? organization.founderName
       };
       setEditingRecord({ type: 'opportunity', record: newOpp });
       setCurrentView('pipeline');
@@ -1120,7 +1128,7 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
         <div className="flex min-h-10 items-center justify-between gap-3 border-b border-slate-100 bg-white px-4 py-1.5 text-xs text-slate-500 sm:px-6">
           <span>{syncError ? <span role="alert" className="text-rose-700">Shared-data sync failed: {syncError}</span> : `Signed in as ${staffUser.name} (${staffUser.role})`}</span>
           <div className="flex items-center gap-2">
-            {staffUser.role === 'admin' && <button type="button" onClick={() => setShowStaffInvite(true)} className="rounded-lg border border-slate-200 px-3 py-1.5 font-semibold text-slate-600 hover:bg-slate-50">Invite staff</button>}
+            {staffUser.role === 'manager' && <button type="button" onClick={() => setShowStaffInvite(true)} className="rounded-lg border border-slate-200 px-3 py-1.5 font-semibold text-slate-600 hover:bg-slate-50">Invite staff</button>}
             <button type="button" onClick={() => setShowMyProfile(true)} className="rounded-lg border border-slate-200 px-3 py-1.5 font-semibold text-slate-600 hover:bg-slate-50">My Profile</button>
             <button type="button" onClick={() => {
               void onLogout().catch((reason: unknown) => setSyncError(reason instanceof Error ? reason.message : 'Could not sign out.'));
@@ -1158,6 +1166,8 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
               onDeleteActivity={handleDeleteActivity}
               onCompleteActivity={handleCompleteActivity}
               onSelectLead={handleSelectLead}
+              currentUserName={staffUser.name}
+              lockOwner={staffUser.role === 'user'}
             />
           )}
 
@@ -1241,6 +1251,16 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
             />
           )}
 
+          {currentView === 'reports' && (
+            <SalesReports
+              activities={activities}
+              leads={leads}
+              opportunities={opportunities}
+              currentUser={staffUser}
+              onSelectLead={handleSelectLead}
+            />
+          )}
+
           {currentView === 'quotations' && (
             <QuotationsPage
               {...commercialPageProps}
@@ -1275,7 +1295,7 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
             <AnalyticsHub leads={leads} opportunities={opportunities} invoices={invoices} />
           )}
 
-          {currentView === 'admin' && staffUser.role === 'admin' && <AdminHub onInviteStaff={() => setShowStaffInvite(true)} />}
+          {currentView === 'admin' && staffUser.role === 'manager' && <AdminHub onInviteStaff={() => setShowStaffInvite(true)} />}
 
           {currentView === 'org-setup' && (
             <OrganizationSetup profile={organization} onSave={handleSaveOrganization} />
@@ -1316,6 +1336,8 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
         onClose={() => setIsNewLeadModalOpen(false)}
         onSubmit={handleAddNewLead}
         assignees={staffAssignees}
+        defaultOwner={staffUser.role === 'user' ? staffUser.name : ''}
+        lockOwner={staffUser.role === 'user'}
       />
       {portalInviteCustomer && (
         <CustomerPortalInviteModal
@@ -1328,10 +1350,12 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
       {whatsAppRecipient && <WhatsAppComposerModal recipient={whatsAppRecipient} onClose={() => setWhatsAppRecipient(null)} />}
       {editingRecord && (() => {
         const editorConfig = getEditorConfig(editingRecord, staffAssignees);
-        const editableFields = editingRecord.type === 'opportunity' &&
-          ['Won', 'Lost'].includes(editingRecord.record.stage)
-          ? editorConfig.fields.filter((field) => field.key !== 'amount')
-          : editorConfig.fields;
+        const editableFields = editorConfig.fields.filter((field) => {
+          if (editingRecord.type === 'opportunity' && ['Won', 'Lost'].includes(editingRecord.record.stage) && field.key === 'amount') return false;
+          if (editingRecord.type === 'lead' && staffUser.role === 'user' && field.key === 'leadOwner') return false;
+          if (editingRecord.type === 'opportunity' && staffUser.role === 'user' && field.key === 'owner') return false;
+          return true;
+        });
         return (
           <RecordEditorModal
             title={editorConfig.title}

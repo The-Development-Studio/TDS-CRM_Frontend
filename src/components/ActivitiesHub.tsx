@@ -11,6 +11,8 @@ interface ActivitiesHubProps {
   onDeleteActivity: (activity: Activity) => void;
   onCompleteActivity: (activity: Activity) => void;
   onSelectLead: (leadId: string) => void;
+  currentUserName: string;
+  lockOwner?: boolean;
 }
 
 const activityTypes: Activity['type'][] = ['Call', 'WhatsApp', 'Meeting', 'Email', 'Requirement Log', 'Proposal', 'System'];
@@ -46,7 +48,9 @@ export const ActivitiesHub: React.FC<ActivitiesHubProps> = ({
   onEditActivity,
   onDeleteActivity,
   onCompleteActivity,
-  onSelectLead
+  onSelectLead,
+  currentUserName,
+  lockOwner = false
 }) => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | Activity['status']>('All');
@@ -158,8 +162,8 @@ export const ActivitiesHub: React.FC<ActivitiesHubProps> = ({
       {showCreate && (
         <RecordEditorModal
           title="Schedule activity"
-          fields={createFields(leads)}
-          values={{ title: '', type: 'Call', leadId: '', date: today, time: '12:00 PM', user: '', priority: 'Medium', description: '' }}
+          fields={createFields(leads).filter((field) => !lockOwner || field.key !== 'user')}
+          values={{ title: '', type: 'Call', leadId: '', date: today, time: '12:00 PM', user: lockOwner ? currentUserName : '', priority: 'Medium', description: '' }}
           onSave={createActivity}
           onClose={() => setShowCreate(false)}
         />
