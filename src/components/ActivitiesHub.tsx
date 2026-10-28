@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import type { Activity, Lead } from '../types/crm';
 import { CalendarClock, Check, CircleAlert, Clock3, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { RecordEditorField, RecordEditorModal, RecordEditorValues } from './RecordEditorModal';
@@ -28,6 +28,10 @@ const createFields = (leads: Lead[]): RecordEditorField[] => [
   { key: 'date', label: 'Date', type: 'date', required: true },
   { key: 'time', label: 'Time', required: true },
   { key: 'user', label: 'Owner', required: true },
+  { key: 'contactPerson', label: 'Contact person' },
+  { key: 'outcome', label: 'Outcome' },
+  { key: 'followUpDate', label: 'Next follow-up', type: 'date' },
+  { key: 'channel', label: 'Message channel' },
   { key: 'priority', label: 'Priority', type: 'select', options: (['High', 'Medium', 'Low'] as const).map((value) => ({ label: value, value })) },
   { key: 'description', label: 'Notes', type: 'textarea', fullWidth: true }
 ];
@@ -56,13 +60,22 @@ export const ActivitiesHub: React.FC<ActivitiesHubProps> = ({
   const [statusFilter, setStatusFilter] = useState<'All' | Activity['status']>('All');
   const [typeFilter, setTypeFilter] = useState<'All' | Activity['type']>('All');
   const [showCreate, setShowCreate] = useState(false);
+  const [quickFilter, setQuickFilter] = useState<'due' | 'upcoming' | 'completed' | null>(null);
+  const [page, setPage] = useState(1);
 
   const filteredActivities = activities
     .filter((activity) => {
       const query = search.trim().toLowerCase();
       const matchesSearch = !query || [activity.title, activity.description, activity.leadName, activity.company, activity.user]
         .some((value) => value?.toLowerCase().includes(query));
-      return matchesSearch && (statusFilter === 'All' || activity.status === statusFilter) &&
+      const matchesQuick = quickFilter === 'due'
+        ? activity.status !== 'Completed' && activity.date <= today
+        : quickFilter === 'upcoming'
+          ? activity.status !== 'Completed' && activity.date > today
+          : quickFilter === 'completed'
+            ? activity.status === 'Completed'
+            : true;
+      return matchesSearch && matchesQuick && (statusFilter === 'All' || activity.status === statusFilter) &&
         (typeFilter === 'All' || activity.type === typeFilter);
     })
     .sort((left, right) => `${left.date} ${left.time}`.localeCompare(`${right.date} ${right.time}`));
@@ -70,6 +83,11 @@ export const ActivitiesHub: React.FC<ActivitiesHubProps> = ({
   const dueCount = activities.filter((activity) => activity.status !== 'Completed' && activity.date <= today).length;
   const upcomingCount = activities.filter((activity) => activity.status !== 'Completed' && activity.date > today).length;
   const completedCount = activities.filter((activity) => activity.status === 'Completed').length;
+  const pageSize = 25;
+  const pageCount = Math.max(1, Math.ceil(filteredActivities.length / pageSize));
+  const visibleActivities = filteredActivities.slice((page - 1) * pageSize, page * pageSize);
+
+  useEffect(() => { setPage(1); }, [search, statusFilter, typeFilter, quickFilter]);
 
   const createActivity = (values: RecordEditorValues) => {
     const leadId = String(values.leadId ?? '');
@@ -85,6 +103,11 @@ export const ActivitiesHub: React.FC<ActivitiesHubProps> = ({
       date,
       time: String(values.time ?? ''),
       user: String(values.user ?? ''),
+      contactPerson: String(values.contactPerson ?? relatedLead?.name ?? ''),
+      outcome: String(values.outcome ?? ''),
+      followUpDate: String(values.followUpDate ?? ''),
+      channel: String(values.channel ?? ''),
+      source: 'manual',
       priority: values.priority as Activity['priority'],
       status: 'Scheduled',
       category: getCategory(date)
@@ -108,9 +131,9 @@ export const ActivitiesHub: React.FC<ActivitiesHubProps> = ({
       </header>
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Metric icon={<CircleAlert className="h-4 w-4" />} label="Due or overdue" value={dueCount} accent="text-rose-600" />
-        <Metric icon={<Clock3 className="h-4 w-4" />} label="Upcoming" value={upcomingCount} accent="text-orange-700" />
-        <Metric icon={<Check className="h-4 w-4" />} label="Completed" value={completedCount} accent="text-emerald-700" />
+        <Metric icon={<CircleAlert className="h-4 w-4" />} label="Due or overdue" value={dueCount} accent="text-rose-600" selected={quickFilter === 'due'} onClick={() => setQuickFilter((value) => value === 'due' ? null : 'due')} />
+        <Metric icon={<Clock3 className="h-4 w-4" />} label="Upcoming" value={upcomingCount} accent="text-orange-700" selected={quickFilter === 'upcoming'} onClick={() => setQuickFilter((value) => value === 'upcoming' ? null : 'upcoming')} />
+        <Metric icon={<Check className="h-4 w-4" />} label="Completed" value={completedCount} accent="text-emerald-700" selected={quickFilter === 'completed'} onClick={() => setQuickFilter((value) => value === 'completed' ? null : 'completed')} />
       </section>
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -137,7 +160,7 @@ export const ActivitiesHub: React.FC<ActivitiesHubProps> = ({
           <table className="w-full min-w-[900px] text-left text-xs">
             <thead><tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-wide text-slate-500"><th className="px-4 py-3">Activity</th><th className="px-4 py-3">Customer</th><th className="px-4 py-3">Date / time</th><th className="px-4 py-3">Owner</th><th className="px-4 py-3">Priority</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right">Actions</th></tr></thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredActivities.map((activity) => (
+              {visibleActivities.map((activity) => (
                 <tr key={activity.id} className="hover:bg-slate-50">
                   <td className="max-w-sm px-4 py-3"><p className="font-semibold text-slate-800">{activity.title}</p><p className="mt-1 line-clamp-2 text-[11px] text-slate-500">{activity.description}</p></td>
                   <td className="px-4 py-3">{activity.leadId ? <button type="button" onClick={() => onSelectLead(activity.leadId!)} className="text-left font-semibold text-slate-700 hover:text-[#ff6600]">{activity.company || activity.leadName}</button> : <span className="text-slate-500">{activity.company || 'General activity'}</span>}</td>
@@ -156,14 +179,14 @@ export const ActivitiesHub: React.FC<ActivitiesHubProps> = ({
             </tbody>
           </table>
         </div>
-        <footer className="border-t border-slate-200 px-4 py-3 text-[11px] text-slate-500">Showing {filteredActivities.length} of {activities.length} activities</footer>
+        <footer className="flex items-center justify-between border-t border-slate-200 px-4 py-3 text-[11px] text-slate-500"><span>Showing {visibleActivities.length} of {filteredActivities.length} matching activities</span><div className="flex items-center gap-2"><button type="button" disabled={page === 1} onClick={() => setPage((value) => Math.max(1, value - 1))} className="rounded border border-slate-200 px-2 py-1 disabled:opacity-40">Previous</button><span>Page {page} of {pageCount}</span><button type="button" disabled={page === pageCount} onClick={() => setPage((value) => Math.min(pageCount, value + 1))} className="rounded border border-slate-200 px-2 py-1 disabled:opacity-40">Next</button></div></footer>
       </section>
 
       {showCreate && (
         <RecordEditorModal
           title="Schedule activity"
           fields={createFields(leads).filter((field) => !lockOwner || field.key !== 'user')}
-          values={{ title: '', type: 'Call', leadId: '', date: today, time: '12:00 PM', user: lockOwner ? currentUserName : '', priority: 'Medium', description: '' }}
+          values={{ title: '', type: 'Call', leadId: '', date: today, time: '12:00 PM', user: lockOwner ? currentUserName : '', contactPerson: '', outcome: '', followUpDate: '', channel: '', priority: 'Medium', description: '' }}
           onSave={createActivity}
           onClose={() => setShowCreate(false)}
         />
@@ -172,9 +195,9 @@ export const ActivitiesHub: React.FC<ActivitiesHubProps> = ({
   );
 };
 
-const Metric: React.FC<{ icon: React.ReactNode; label: string; value: number; accent: string }> = ({ icon, label, value, accent }) => (
-  <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4">
+const Metric: React.FC<{ icon: React.ReactNode; label: string; value: number; accent: string; selected: boolean; onClick: () => void }> = ({ icon, label, value, accent, selected, onClick }) => (
+  <button type="button" aria-pressed={selected} onClick={onClick} className={`flex items-center gap-3 rounded-xl border bg-white p-4 text-left transition ${selected ? 'border-[#ff6600] ring-2 ring-orange-100' : 'border-slate-200 hover:border-orange-200'}`}>
     <span className={`${accent}`}>{icon}</span>
     <div><p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</p><p className={`mt-1 text-lg font-extrabold ${accent}`}>{value}</p></div>
-  </div>
+  </button>
 );

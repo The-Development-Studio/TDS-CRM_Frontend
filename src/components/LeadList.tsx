@@ -33,6 +33,8 @@ interface LeadListProps {
   onSelectLead: (leadId: string) => void;
   onOpenNewLeadModal: () => void;
   onUpdateLeadStatus: (leadId: string, status: Lead['status']) => void;
+  onInlineUpdate: (lead: Lead, changes: Partial<Lead>) => Promise<void>;
+  canAssignOwner: boolean;
   onBulkAssign: (leadIds: string[], owner: string) => void;
   onEditLead: (lead: Lead) => void;
   onDeleteLead: (lead: Lead) => void;
@@ -46,6 +48,8 @@ export const LeadList: React.FC<LeadListProps> = ({
   onSelectLead,
   onOpenNewLeadModal,
   onUpdateLeadStatus,
+  onInlineUpdate,
+  canAssignOwner,
   onBulkAssign,
   onEditLead,
   onDeleteLead,
@@ -63,11 +67,31 @@ export const LeadList: React.FC<LeadListProps> = ({
   const [bulkActionOpen, setBulkActionOpen] = useState(false);
   const [showFilterDrawer, setShowFilterDrawer] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [editingCell, setEditingCell] = useState<{ leadId: string; field: string } | null>(null);
+  const [savingCell, setSavingCell] = useState<string | null>(null);
+  const [inlineNotice, setInlineNotice] = useState<{ kind: 'success' | 'error'; message: string } | null>(null);
   const ownerOptions = Array.from(new Set([
     ...assignees.map((assignee) => assignee.name),
     ...leads.map((lead) => lead.leadOwner).filter(Boolean)
   ])).sort((first, second) => first.localeCompare(second));
   const activeFilterCount = [statusFilter, sourceFilter, priorityFilter, ownerFilter].filter((value) => value !== 'All').length;
+
+  const saveInline = async (lead: Lead, changes: Partial<Lead>) => {
+    const key = `${lead.id}:${Object.keys(changes).join('-')}`;
+    setSavingCell(key);
+    setInlineNotice(null);
+    try {
+      await onInlineUpdate(lead, changes);
+      setInlineNotice({ kind: 'success', message: `${lead.name} updated successfully.` });
+      setEditingCell(null);
+    } catch (reason) {
+      setInlineNotice({ kind: 'error', message: reason instanceof Error ? reason.message : 'Could not update the lead.' });
+    } finally {
+      setSavingCell(null);
+    }
+  };
+
+  const isEditing = (leadId: string, field: string) => editingCell?.leadId === leadId && editingCell.field === field;
 
   // Filter leads
   const filteredLeads = leads.filter((lead) => {
@@ -377,6 +401,12 @@ export const LeadList: React.FC<LeadListProps> = ({
         </div>
       )}
 
+      {inlineNotice && (
+        <div role={inlineNotice.kind === 'error' ? 'alert' : 'status'} className={`rounded-xl border px-4 py-3 text-xs font-semibold ${inlineNotice.kind === 'error' ? 'border-rose-500/30 bg-rose-500/10 text-rose-300' : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'}`}>
+          {inlineNotice.message}
+        </div>
+      )}
+
       {/* Leads Table */}
       <div className="rounded-2xl bg-[#111827]/80 border border-slate-800 shadow-md overflow-hidden">
         <div className="overflow-x-auto">
@@ -400,13 +430,14 @@ export const LeadList: React.FC<LeadListProps> = ({
                 <th className="py-3.5 px-3">Status</th>
                 <th className="py-3.5 px-3">Priority</th>
                 <th className="py-3.5 px-3">Next Follow-up</th>
+                <th className="py-3.5 px-3">Remarks</th>
                 <th className="py-3.5 px-4 text-center">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 font-medium">
               {filteredLeads.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="py-12 text-center text-slate-300">
+                  <td colSpan={12} className="py-12 text-center text-slate-300">
                     No leads found matching your search and filter criteria.
                   </td>
                 </tr>
@@ -476,44 +507,62 @@ export const LeadList: React.FC<LeadListProps> = ({
                       </td>
 
                       {/* Lead Owner */}
-                      <td className="py-3 px-3" onClick={() => onSelectLead(lead.id)}>
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-5 h-5 rounded-full bg-indigo-600 text-[9px] font-bold text-white flex items-center justify-center">
-                            {lead.leadOwner.charAt(0)}
-                          </div>
-                          <span className="text-slate-300 text-xs">{lead.leadOwner}</span>
-                        </div>
+                      <td className="py-3 px-3" onClick={(event) => event.stopPropagation()}>
+                        {isEditing(lead.id, 'owner') ? (
+                          <input
+                            autoFocus
+                            list={`owners-${lead.id}`}
+                            defaultValue={lead.leadOwner}
+                            placeholder="Search owner"
+                            disabled={Boolean(savingCell)}
+                            onKeyDown={(event) => {
+                              if (event.key !== 'Enter') return;
+                              const owner = event.currentTarget.value.trim();
+                              const assignee = assignees.find((item) => item.name === owner);
+                              void saveInline(lead, { leadOwner: owner, leadOwnerId: assignee?.id ?? '' });
+                            }}
+                            onBlur={(event) => {
+                              const owner = event.currentTarget.value.trim();
+                              if (owner === lead.leadOwner) { setEditingCell(null); return; }
+                              const assignee = assignees.find((item) => item.name === owner);
+                              if (owner && !assignee) { setInlineNotice({ kind: 'error', message: 'Select an active user from the owner list.' }); return; }
+                              void saveInline(lead, { leadOwner: owner, leadOwnerId: assignee?.id ?? '' });
+                            }}
+                            className="h-8 w-44 rounded-lg border border-indigo-500 bg-slate-900 px-2 text-xs text-white outline-none"
+                          />
+                        ) : (
+                          <button type="button" disabled={!canAssignOwner} onClick={() => setEditingCell({ leadId: lead.id, field: 'owner' })} className="flex items-center gap-1.5 rounded-lg px-1 py-1 text-left hover:bg-slate-800 disabled:cursor-default disabled:hover:bg-transparent" title={canAssignOwner ? 'Edit owner inline' : 'Only managers can reassign owners'}>
+                            <div className="flex h-5 w-5 items-center justify-center rounded-full bg-indigo-600 text-[9px] font-bold text-white">{lead.leadOwner?.charAt(0) || '?'}</div>
+                            <span className="text-xs text-slate-300">{lead.leadOwner || 'Unassigned'}</span>
+                          </button>
+                        )}
+                        <datalist id={`owners-${lead.id}`}>{assignees.map((assignee) => <option key={assignee.id} value={assignee.name}>{assignee.role} · {assignee.email}</option>)}</datalist>
                       </td>
 
                       {/* Status */}
-                      <td className="py-3 px-3" onClick={() => onSelectLead(lead.id)}>
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] border font-semibold whitespace-nowrap ${getStatusBadge(
-                            lead.status
-                          )}`}
-                        >
-                          {lead.status}
-                        </span>
+                      <td className="py-3 px-3" onClick={(event) => event.stopPropagation()}>
+                        {isEditing(lead.id, 'status') ? <select autoFocus value={lead.status} disabled={Boolean(savingCell)} onChange={(event) => void saveInline(lead, { status: event.target.value as Lead['status'] })} onBlur={() => setEditingCell(null)} className="h-8 rounded-lg border border-indigo-500 bg-slate-900 px-2 text-[11px] text-white">
+                          {['New', 'Assigned', 'Contacted', 'Requirement Collected', 'Qualified', 'Opportunity Created', 'Won', 'Unqualified', 'Converted'].map((status) => <option key={status}>{status}</option>)}
+                        </select> : <button type="button" onClick={() => setEditingCell({ leadId: lead.id, field: 'status' })} className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap ${getStatusBadge(lead.status)}`}>{lead.status}</button>}
                       </td>
 
                       {/* Priority */}
-                      <td className="py-3 px-3" onClick={() => onSelectLead(lead.id)}>
-                        <span
-                          className={`px-2 py-0.5 rounded text-[10px] border font-mono ${getPriorityBadge(
-                            lead.priority
-                          )}`}
-                        >
-                          {lead.priority}
-                        </span>
+                      <td className="py-3 px-3" onClick={(event) => event.stopPropagation()}>
+                        {isEditing(lead.id, 'priority') ? <select autoFocus value={lead.priority} disabled={Boolean(savingCell)} onChange={(event) => void saveInline(lead, { priority: event.target.value as Lead['priority'] })} onBlur={() => setEditingCell(null)} className="h-8 rounded-lg border border-indigo-500 bg-slate-900 px-2 text-[11px] text-white">
+                          {['Urgent', 'High', 'Medium', 'Low'].map((priority) => <option key={priority}>{priority}</option>)}
+                        </select> : <button type="button" onClick={() => setEditingCell({ leadId: lead.id, field: 'priority' })} className={`rounded border px-2 py-0.5 text-[10px] font-mono ${getPriorityBadge(lead.priority)}`}>{lead.priority}</button>}
                       </td>
 
                       {/* Next follow up */}
-                      <td className="py-3 px-3" onClick={() => onSelectLead(lead.id)}>
-                        <div className="text-amber-300 text-[11px] font-mono flex items-center gap-1 font-semibold">
-                          <Clock className="w-3 h-3" />
-                          {lead.nextFollowUp}
-                        </div>
-                        <span className="text-[10px] text-slate-300">{lead.nextFollowUpTime}</span>
+                      <td className="py-3 px-3" onClick={(event) => event.stopPropagation()}>
+                        {isEditing(lead.id, 'followup') ? <div className="flex w-36 flex-col gap-1">
+                          <input autoFocus type="date" value={lead.nextFollowUp} disabled={Boolean(savingCell)} onChange={(event) => void saveInline(lead, { nextFollowUp: event.target.value })} className="h-7 rounded border border-indigo-500 bg-slate-900 px-1 text-[10px] text-white" />
+                          <input type="time" value={lead.nextFollowUpTime && /^\d{2}:\d{2}$/.test(lead.nextFollowUpTime) ? lead.nextFollowUpTime : ''} disabled={Boolean(savingCell)} onChange={(event) => void saveInline(lead, { nextFollowUpTime: event.target.value })} className="h-7 rounded border border-indigo-500 bg-slate-900 px-1 text-[10px] text-white" />
+                        </div> : <button type="button" onClick={() => setEditingCell({ leadId: lead.id, field: 'followup' })} className="rounded-lg px-1 py-1 text-left hover:bg-slate-800"><div className="flex items-center gap-1 text-[11px] font-semibold font-mono text-amber-300"><Clock className="h-3 w-3" />{lead.nextFollowUp || 'Set date'}</div><span className="text-[10px] text-slate-300">{lead.nextFollowUpTime || 'Set time'}</span></button>}
+                      </td>
+
+                      <td className="max-w-[180px] py-3 px-3" onClick={(event) => event.stopPropagation()}>
+                        {isEditing(lead.id, 'remarks') ? <input autoFocus defaultValue={lead.commercialNotes ?? ''} placeholder="Add remarks" disabled={Boolean(savingCell)} onKeyDown={(event) => { if (event.key === 'Enter') void saveInline(lead, { commercialNotes: event.currentTarget.value.trim() }); }} onBlur={(event) => { if (event.currentTarget.value.trim() !== (lead.commercialNotes ?? '')) void saveInline(lead, { commercialNotes: event.currentTarget.value.trim() }); else setEditingCell(null); }} className="h-8 w-44 rounded-lg border border-indigo-500 bg-slate-900 px-2 text-xs text-white" /> : <button type="button" onClick={() => setEditingCell({ leadId: lead.id, field: 'remarks' })} className="block max-w-[170px] truncate rounded-lg px-1 py-1 text-left text-[11px] text-slate-300 hover:bg-slate-800" title={lead.commercialNotes || 'Add remarks'}>{lead.commercialNotes || 'Add remarks'}</button>}
                       </td>
 
                       {/* Action */}

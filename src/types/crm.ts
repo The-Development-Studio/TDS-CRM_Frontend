@@ -12,6 +12,7 @@ export interface Lead {
   interestedService: string;
   estimatedBudget: number;
   leadOwner: string;
+  leadOwnerId?: string;
   leadOwnerAvatar?: string;
   status: 'New' | 'Assigned' | 'Contacted' | 'Requirement Collected' | 'Qualified' | 'Opportunity Created' | 'Won' | 'Unqualified' | 'Converted';
   priority: 'High' | 'Medium' | 'Low' | 'Urgent';
@@ -27,6 +28,7 @@ export interface StaffAssignee {
   id: string;
   name: string;
   email: string;
+  role: 'admin' | 'manager' | 'user';
 }
 
 export interface Customer {
@@ -61,6 +63,14 @@ export interface Activity {
   date: string;
   time: string;
   user: string;
+  activityOwnerId?: string;
+  contactPerson?: string;
+  outcome?: string;
+  followUpDate?: string;
+  channel?: string;
+  source?: 'manual' | 'system';
+  createdAt?: string;
+  updatedAt?: string;
   priority: 'High' | 'Medium' | 'Low';
   status: 'Completed' | 'Pending' | 'Scheduled';
   category: 'Today' | 'Overdue' | 'Tomorrow' | 'This Week';

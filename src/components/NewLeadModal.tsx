@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useLayoutEffect, useState } from 'react';
 import {
   X,
   User,
@@ -30,7 +30,7 @@ export const NewLeadModal: React.FC<NewLeadModalProps> = ({
   defaultOwner = '',
   lockOwner = false
 }) => {
-  const [formData, setFormData] = useState({
+  const createInitialForm = () => ({
     name: '',
     company: '',
     designation: '',
@@ -49,11 +49,20 @@ export const NewLeadModal: React.FC<NewLeadModalProps> = ({
     nextFollowUpTime: '11:00 AM',
     notes: ''
   });
+  const [formData, setFormData] = useState(createInitialForm);
+  const [submitting, setSubmitting] = useState(false);
+
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+    setFormData(createInitialForm());
+    setSubmitting(false);
+  }, [isOpen, defaultOwner]);
 
   if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
 
     const requiredValues = [
       formData.name.trim(),
@@ -66,7 +75,9 @@ export const NewLeadModal: React.FC<NewLeadModalProps> = ({
       return;
     }
 
-    const newId = `LD-${new Date().getFullYear()}-${Date.now().toString().slice(-6)}`;
+    setSubmitting(true);
+    const newId = `LD-${new Date().getFullYear()}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+    const selectedOwner = assignees.find((assignee) => assignee.name === formData.leadOwner.trim());
     onSubmit({
       id: newId,
       name: formData.name.trim(),
@@ -83,12 +94,14 @@ export const NewLeadModal: React.FC<NewLeadModalProps> = ({
       estimatedBudget: Number(formData.estimatedBudget),
       priority: formData.priority,
       leadOwner: formData.leadOwner.trim(),
+      leadOwnerId: selectedOwner?.id,
       status: formData.leadOwner.trim() ? 'Assigned' : 'New',
       createdDate: new Date().toISOString().split('T')[0],
       nextFollowUp: formData.nextFollowUpDate,
       nextFollowUpTime: formData.nextFollowUpTime,
       notes: formData.notes.trim() ? [formData.notes.trim()] : ['Lead record created via Quick Form.']
     });
+    setFormData(createInitialForm());
     onClose();
   };
 
@@ -328,7 +341,7 @@ export const NewLeadModal: React.FC<NewLeadModalProps> = ({
                   className="w-full bg-slate-900 border border-slate-700/80 rounded-xl p-2.5 text-white"
                 >
                   {!lockOwner && <option value="">Unassigned</option>}
-                  {assignees.map((assignee) => <option key={assignee.id} value={assignee.name}>{assignee.name} ({assignee.email})</option>)}
+                  {assignees.map((assignee) => <option key={assignee.id} value={assignee.name}>{assignee.name} · {assignee.role} ({assignee.email})</option>)}
                 </select>
               </div>
 
@@ -386,9 +399,10 @@ export const NewLeadModal: React.FC<NewLeadModalProps> = ({
             </button>
             <button
               type="submit"
-              className="px-5 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-500 hover:to-cyan-500 text-white font-bold shadow-lg shadow-indigo-600/30 cursor-pointer"
+              disabled={submitting}
+              className="px-5 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-500 hover:to-cyan-500 text-white font-bold shadow-lg shadow-indigo-600/30 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Save & Create Lead
+              {submitting ? 'Creating…' : 'Save & Create Lead'}
             </button>
           </div>
         </form>

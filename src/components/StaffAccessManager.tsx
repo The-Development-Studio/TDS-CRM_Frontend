@@ -124,9 +124,9 @@ export function StaffAccessManager({ onInviteStaff }: StaffAccessManagerProps) {
       {users.map((user) => {
         const selectedRole = roleDrafts[user.id] ?? user.role;
         const selectedManagerId = managerDrafts[user.id] ?? "";
-        const managers = users.filter((item) => item.id !== user.id && item.role === "manager" && item.active);
-        const pages = user.role === "manager" ? assignablePageIds : drafts[user.id] ?? [];
-        const changed = user.role !== "manager" && [...pages].sort().join("|") !== [...user.pageAccess].sort().join("|");
+        const managers = users.filter((item) => item.id !== user.id && item.role !== "user" && item.active);
+        const pages = user.role !== "user" ? assignablePageIds : drafts[user.id] ?? [];
+        const changed = user.role === "user" && [...pages].sort().join("|") !== [...user.pageAccess].sort().join("|");
         const roleChanged = selectedRole !== user.role || (selectedRole === "user" && selectedManagerId !== (user.reportingManagerId ?? ""));
         return <div key={user.id} className={`p-4 sm:p-5 ${user.active ? "" : "opacity-70"}`}>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -136,12 +136,13 @@ export function StaffAccessManager({ onInviteStaff }: StaffAccessManagerProps) {
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="truncate text-sm font-bold text-white">{user.name}</h3>
                   {user.role === "manager" && <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/15 px-2 py-0.5 text-[10px] font-bold text-orange-300"><ShieldCheck className="h-3 w-3" /> Manager</span>}
+                  {user.role === "admin" && <span className="inline-flex items-center gap-1 rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] font-bold text-violet-300"><ShieldCheck className="h-3 w-3" /> Administrator</span>}
                   <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${user.active ? "bg-emerald-500/15 text-emerald-300" : "bg-slate-700 text-slate-300"}`}>{user.active ? "Active" : "Inactive"}</span>
                 </div>
                 <p className="truncate text-xs text-slate-400">{user.email}{user.jobTitle ? ` · ${user.jobTitle}` : ""}</p>
               </div>
             </div>
-            {user.role !== "manager" && <div className="flex shrink-0 flex-wrap gap-2">
+            {user.role === "user" && <div className="flex shrink-0 flex-wrap gap-2">
               <button type="button" onClick={() => setDrafts((current) => ({ ...current, [user.id]: pages.length === assignablePageIds.length ? ["dashboard"] : [...assignablePageIds] }))} className="rounded-lg border border-slate-700 px-3 py-2 text-[11px] font-bold text-slate-300 hover:bg-slate-800">{pages.length === assignablePageIds.length ? "Dashboard only" : "Select all"}</button>
               <button type="button" disabled={!changed || savingId === user.id} onClick={() => void save(user)} className="inline-flex items-center gap-1.5 rounded-lg bg-[#ff6600] px-3 py-2 text-[11px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"><Check className="h-3.5 w-3.5" /> {savingId === user.id ? "Saving..." : "Save access"}</button>
               <button type="button" disabled={savingId === user.id} onClick={() => void setAccountActive(user, !user.active)} className="rounded-lg border border-slate-700 px-3 py-2 text-[11px] font-bold text-slate-300 hover:bg-slate-800 disabled:opacity-40">{user.active ? "Deactivate" : "Reactivate"}</button>
@@ -149,7 +150,8 @@ export function StaffAccessManager({ onInviteStaff }: StaffAccessManagerProps) {
           </div>
           <div className="mt-4 grid grid-cols-1 gap-3 rounded-xl border border-slate-800 bg-slate-950/40 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto] sm:items-end">
             <label className="text-xs font-semibold text-slate-300">Role
-              <select value={selectedRole} onChange={(event) => setRoleDrafts((current) => ({ ...current, [user.id]: event.target.value as StaffUser["role"] }))} className="mt-1.5 h-9 w-full rounded-lg border border-slate-700 bg-slate-900 px-2 text-xs text-white">
+              <select disabled={user.role === "admin"} value={selectedRole} onChange={(event) => setRoleDrafts((current) => ({ ...current, [user.id]: event.target.value as StaffUser["role"] }))} className="mt-1.5 h-9 w-full rounded-lg border border-slate-700 bg-slate-900 px-2 text-xs text-white disabled:opacity-60">
+                {user.role === "admin" && <option value="admin">Administrator</option>}
                 <option value="manager">Manager</option>
                 <option value="user">User</option>
               </select>
@@ -160,11 +162,11 @@ export function StaffAccessManager({ onInviteStaff }: StaffAccessManagerProps) {
                 {managers.map((manager) => <option key={manager.id} value={manager.id}>{manager.name} ({manager.email})</option>)}
               </select>
             </label> : <p className="text-xs text-slate-500">Managers can view and assign all leads.</p>}
-            <button type="button" disabled={!roleChanged || savingId === user.id || (selectedRole === "user" && !selectedManagerId)} onClick={() => void saveRole(user)} className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-indigo-600 px-3 text-[11px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"><Check className="h-3.5 w-3.5" /> Save role</button>
+            <button type="button" disabled={user.role === "admin" || !roleChanged || savingId === user.id || (selectedRole === "user" && !selectedManagerId)} onClick={() => void saveRole(user)} className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-indigo-600 px-3 text-[11px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"><Check className="h-3.5 w-3.5" /> Save role</button>
           </div>
           <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {assignablePageOptions.map((page) => <label key={page.id} className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs ${user.role === "manager" || page.id === "dashboard" ? "cursor-not-allowed border-slate-800 bg-slate-900/60 text-slate-500" : "cursor-pointer border-slate-700 text-slate-300 hover:bg-slate-800"}`}>
-              <input type="checkbox" disabled={user.role === "manager" || page.id === "dashboard"} checked={pages.includes(page.id)} onChange={() => togglePage(user.id, page.id)} className="h-4 w-4 accent-orange-600" />
+            {assignablePageOptions.map((page) => <label key={page.id} className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs ${user.role !== "user" || page.id === "dashboard" ? "cursor-not-allowed border-slate-800 bg-slate-900/60 text-slate-500" : "cursor-pointer border-slate-700 text-slate-300 hover:bg-slate-800"}`}>
+              <input type="checkbox" disabled={user.role !== "user" || page.id === "dashboard"} checked={pages.includes(page.id)} onChange={() => togglePage(user.id, page.id)} className="h-4 w-4 accent-orange-600" />
               <span><span className="font-semibold">{page.label}</span><span className="ml-1 text-[10px] text-slate-500">{page.group}</span></span>
             </label>)}
           </div>

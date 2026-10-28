@@ -47,8 +47,8 @@ const resourcePages: Record<keyof typeof collectionStorage, string[]> = {
 export const prepareStaffData = async (staffUser: StaffUser) => {
   const importedKey = "tds-crm:v2:shared-imported";
   const importedDocumentsKey = "tds-crm:v2:shared-documents-imported";
-  const hasPage = (page: string) => staffUser.role === "manager" || staffUser.pageAccess.includes(page);
-  if (staffUser.role === "manager" && localStorage.getItem(importedKey) !== "true") {
+  const hasPage = (page: string) => staffUser.role === "admin" || staffUser.pageAccess.includes(page);
+  if (staffUser.role === "admin" && localStorage.getItem(importedKey) !== "true") {
     for (const [resource, storageKey] of Object.entries(collectionStorage)) {
       const records = readLocalCollection(storageKey);
       for (let index = 0; index < records.length; index += 25) {

@@ -1,219 +1,91 @@
 import { useEffect, useMemo, useState } from "react";
-import {
-  Activity as ActivityIcon,
-  BarChart3,
-  CheckCircle2,
-  Clock3,
-  Target,
-  TrendingUp,
-  UserRound,
-  UsersRound
-} from "lucide-react";
+import { BarChart3, CheckCircle2, Clock3, Mail, MessageSquare, Phone, Search, Target, TrendingUp, UserRound, UsersRound, Video } from "lucide-react";
 import type { StaffUser } from "./StaffLogin";
 import type { Activity, Lead, Opportunity } from "../types/crm";
 import { formatCompactINR } from "../utils/currency";
 
-interface SalesReportsProps {
-  activities: Activity[];
-  leads: Lead[];
-  opportunities: Opportunity[];
-  currentUser: StaffUser;
-  onSelectLead: (leadId: string) => void;
-}
-
+interface SalesReportsProps { activities: Activity[]; leads: Lead[]; opportunities: Opportunity[]; currentUser: StaffUser; onSelectLead: (leadId: string) => void; }
 type ReportTab = "mine" | "team" | "kpi";
-type Period = "7" | "30" | "90" | "all";
+type Period = "today" | "yesterday" | "week" | "month" | "custom";
+type Drilldown = "recent" | "calls" | "messages" | "emails" | "meetings" | "completed" | "pending" | "leads";
 
-const periodLabel: Record<Period, string> = {
-  "7": "Last 7 days",
-  "30": "Last 30 days",
-  "90": "Last 90 days",
-  all: "All time"
+const dateValue = (date = new Date()) => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+const periodRange = (period: Period, customStart: string, customEnd: string) => {
+  const now = new Date(); const end = dateValue(now);
+  if (period === "custom") return { start: customStart, end: customEnd };
+  if (period === "today") return { start: end, end };
+  if (period === "yesterday") { now.setDate(now.getDate() - 1); const day = dateValue(now); return { start: day, end: day }; }
+  if (period === "week") { const day = now.getDay() || 7; now.setDate(now.getDate() - day + 1); return { start: dateValue(now), end }; }
+  now.setDate(1); return { start: dateValue(now), end };
 };
-
-const sameOwner = (left: string | undefined, right: string) =>
-  (left ?? "").trim().toLocaleLowerCase() === right.trim().toLocaleLowerCase();
-
-const periodStart = (period: Period) => {
-  if (period === "all") return "";
-  const date = new Date();
-  date.setHours(0, 0, 0, 0);
-  date.setDate(date.getDate() - Number(period) + 1);
-  return date.toISOString().slice(0, 10);
-};
-
-const inPeriod = (date: string, start: string) => !start || date >= start;
+const ownerMatches = (record: { activityOwnerId?: string; user?: string }, user: StaffUser) => record.activityOwnerId ? record.activityOwnerId === user.id : (record.user ?? "").trim().toLowerCase() === user.name.trim().toLowerCase();
+const leadOwnerMatches = (lead: Lead, user: StaffUser) => lead.leadOwnerId ? lead.leadOwnerId === user.id : lead.leadOwner.trim().toLowerCase() === user.name.trim().toLowerCase();
 
 export default function SalesReports({ activities, leads, opportunities, currentUser, onSelectLead }: SalesReportsProps) {
-  const [tab, setTab] = useState<ReportTab>("mine");
-  const [period, setPeriod] = useState<Period>("30");
-  const [staff, setStaff] = useState<StaffUser[]>([currentUser]);
-  const [teamError, setTeamError] = useState("");
+  const [tab, setTab] = useState<ReportTab>("mine"); const [period, setPeriod] = useState<Period>("month");
+  const [customStart, setCustomStart] = useState(dateValue()); const [customEnd, setCustomEnd] = useState(dateValue());
+  const [staff, setStaff] = useState<StaffUser[]>([currentUser]); const [teamError, setTeamError] = useState("");
+  const [drilldown, setDrilldown] = useState<Drilldown>("recent"); const [activityType, setActivityType] = useState<"All" | Activity["type"]>("All");
+  const [search, setSearch] = useState(""); const [page, setPage] = useState(1);
 
   useEffect(() => {
-    if (currentUser.role !== "manager") return;
-    fetch("/api/staff-auth/users", { credentials: "include" })
-      .then(async (response) => {
-        const result = await response.json().catch(() => ({})) as { data?: StaffUser[]; error?: string };
-        if (!response.ok || !result.data) throw new Error(result.error || `Could not load team (${response.status})`);
-        setStaff(result.data);
-      })
-      .catch((reason: unknown) => setTeamError(reason instanceof Error ? reason.message : "Could not load team."));
+    if (currentUser.role === "user") return;
+    fetch("/api/staff-auth/users", { credentials: "include" }).then(async (response) => {
+      const result = await response.json().catch(() => ({})) as { data?: StaffUser[]; error?: string };
+      if (!response.ok || !result.data) throw new Error(result.error || `Could not load team (${response.status})`); setStaff(result.data);
+    }).catch((reason: unknown) => setTeamError(reason instanceof Error ? reason.message : "Could not load team."));
   }, [currentUser]);
 
-  const start = periodStart(period);
-  const directReports = useMemo(() => staff.filter((user) =>
-    user.active && user.role === "user" && user.reportingManagerId === currentUser.id
-  ), [currentUser.id, staff]);
-  const teamMembers = useMemo(() => currentUser.role === "manager" ? directReports : [currentUser], [currentUser, directReports]);
-  const teamNames = useMemo(() => new Set(teamMembers.map((user) => user.name.trim().toLocaleLowerCase())), [teamMembers]);
+  const directReports = useMemo(() => currentUser.role === "admin"
+    ? staff.filter((user) => user.active)
+    : staff.filter((user) => user.active && user.role === "user" && user.reportingManagerId === currentUser.id), [currentUser.id, currentUser.role, staff]);
+  const selectedUsers = tab === "team" || tab === "kpi" ? directReports : [currentUser];
+  const { start, end } = periodRange(period, customStart, customEnd); const inRange = (date: string) => (!start || date >= start) && (!end || date <= end);
+  const scopedActivities = activities.filter((activity) => selectedUsers.some((user) => ownerMatches(activity, user)) && inRange(activity.date));
+  const scopedLeads = leads.filter((lead) => selectedUsers.some((user) => leadOwnerMatches(lead, user)) && inRange(lead.createdDate));
+  const counts: Record<Drilldown, number> = {
+    calls: scopedActivities.filter((item) => item.type === "Call").length, messages: scopedActivities.filter((item) => item.type === "WhatsApp").length,
+    emails: scopedActivities.filter((item) => item.type === "Email").length, meetings: scopedActivities.filter((item) => item.type === "Meeting").length,
+    completed: scopedActivities.filter((item) => item.status === "Completed" && item.type !== "System").length,
+    pending: scopedActivities.filter((item) => item.status !== "Completed" && item.type !== "System").length, leads: scopedLeads.length, recent: scopedActivities.length
+  };
+  const drilldownActivities = scopedActivities.filter((activity) => {
+    const matchesCard = drilldown === "calls" ? activity.type === "Call" : drilldown === "messages" ? activity.type === "WhatsApp" : drilldown === "emails" ? activity.type === "Email" : drilldown === "meetings" ? activity.type === "Meeting" : drilldown === "completed" ? activity.status === "Completed" && activity.type !== "System" : drilldown === "pending" ? activity.status !== "Completed" && activity.type !== "System" : drilldown !== "leads";
+    const query = search.trim().toLowerCase(); const matchesSearch = !query || [activity.title, activity.description, activity.company, activity.leadName, activity.contactPerson, activity.user].some((value) => value?.toLowerCase().includes(query));
+    return matchesCard && matchesSearch && (activityType === "All" || activity.type === activityType);
+  }).sort((left, right) => `${right.date} ${right.time}`.localeCompare(`${left.date} ${left.time}`));
+  const drilldownLeads = scopedLeads.filter((lead) => { const query = search.trim().toLowerCase(); return !query || [lead.name, lead.company, lead.leadOwner, lead.email].some((value) => value.toLowerCase().includes(query)); });
+  const pageSize = 20; const detailCount = drilldown === "leads" ? drilldownLeads.length : drilldownActivities.length; const pageCount = Math.max(1, Math.ceil(detailCount / pageSize));
+  const visibleActivities = drilldownActivities.slice((page - 1) * pageSize, page * pageSize); const visibleLeads = drilldownLeads.slice((page - 1) * pageSize, page * pageSize);
+  useEffect(() => { setPage(1); }, [tab, period, customStart, customEnd, drilldown, activityType, search]);
 
-  const myActivities = useMemo(() => activities.filter((activity) =>
-    sameOwner(activity.user, currentUser.name) && inPeriod(activity.date, start)
-  ), [activities, currentUser.name, start]);
-  const teamActivities = useMemo(() => activities.filter((activity) =>
-    teamNames.has(activity.user.trim().toLocaleLowerCase()) && inPeriod(activity.date, start)
-  ), [activities, start, teamNames]);
-
-  const selectedActivities = tab === "mine" ? myActivities : teamActivities;
-  const completed = selectedActivities.filter((activity) => activity.status === "Completed").length;
-  const overdue = selectedActivities.filter((activity) =>
-    activity.status !== "Completed" && activity.date < new Date().toISOString().slice(0, 10)
-  ).length;
-  const completionRate = selectedActivities.length ? Math.round((completed / selectedActivities.length) * 100) : 0;
-
-  const memberKpis = teamMembers.map((member) => {
-    const memberLeads = leads.filter((lead) => sameOwner(lead.leadOwner, member.name) && inPeriod(lead.createdDate, start));
-    const memberActivities = activities.filter((activity) => sameOwner(activity.user, member.name) && inPeriod(activity.date, start));
-    const memberOpportunities = opportunities.filter((opportunity) => sameOwner(opportunity.owner, member.name));
-    const converted = memberLeads.filter((lead) => ["Won", "Converted"].includes(lead.status)).length;
-    const completedActivities = memberActivities.filter((activity) => activity.status === "Completed").length;
-    return {
-      ...member,
-      leads: memberLeads.length,
-      converted,
-      conversionRate: memberLeads.length ? Math.round((converted / memberLeads.length) * 100) : 0,
-      activities: memberActivities.length,
-      completedActivities,
-      activityRate: memberActivities.length ? Math.round((completedActivities / memberActivities.length) * 100) : 0,
-      pipeline: memberOpportunities.filter((opportunity) => !["Won", "Lost"].includes(opportunity.stage))
-        .reduce((sum, opportunity) => sum + opportunity.amount, 0)
-    };
+  const memberKpis = selectedUsers.map((member) => {
+    const memberLeads = leads.filter((lead) => leadOwnerMatches(lead, member) && inRange(lead.createdDate)); const memberActivities = activities.filter((activity) => ownerMatches(activity, member) && inRange(activity.date));
+    const memberOpportunities = opportunities.filter((item) => item.owner.trim().toLowerCase() === member.name.trim().toLowerCase()); const converted = memberLeads.filter((lead) => ["Won", "Converted"].includes(lead.status)).length; const completed = memberActivities.filter((activity) => activity.status === "Completed").length;
+    return { ...member, leads: memberLeads.length, converted, activities: memberActivities.length, completed, conversionRate: memberLeads.length ? Math.round(converted / memberLeads.length * 100) : 0, completionRate: memberActivities.length ? Math.round(completed / memberActivities.length * 100) : 0, pipeline: memberOpportunities.filter((item) => !["Won", "Lost"].includes(item.stage)).reduce((sum, item) => sum + item.amount, 0) };
   });
-
-  const totals = memberKpis.reduce((result, member) => ({
-    leads: result.leads + member.leads,
-    converted: result.converted + member.converted,
-    activities: result.activities + member.activities,
-    completedActivities: result.completedActivities + member.completedActivities,
-    pipeline: result.pipeline + member.pipeline
-  }), { leads: 0, converted: 0, activities: 0, completedActivities: 0, pipeline: 0 });
-
-  const tabs: Array<{ id: ReportTab; label: string; icon: typeof UserRound; managerOnly?: boolean }> = [
-    { id: "mine", label: "My Activity", icon: UserRound },
-    { id: "team", label: "Team Activity", icon: UsersRound, managerOnly: true },
-    { id: "kpi", label: "Team KPI Tracking", icon: BarChart3, managerOnly: true }
+  const cards: Array<{ id: Drilldown; label: string; icon: typeof Phone; accent: string }> = [
+    { id: "calls", label: "Total Calls", icon: Phone, accent: "text-sky-700" }, { id: "messages", label: "Total Messages", icon: MessageSquare, accent: "text-emerald-700" },
+    { id: "emails", label: "Total Emails", icon: Mail, accent: "text-violet-700" }, { id: "meetings", label: "Total Meetings", icon: Video, accent: "text-indigo-700" },
+    { id: "completed", label: "Completed Follow-ups", icon: CheckCircle2, accent: "text-emerald-700" }, { id: "pending", label: "Pending Follow-ups", icon: Clock3, accent: "text-rose-700" },
+    { id: "leads", label: "Total Assigned Leads", icon: Target, accent: "text-orange-700" }, { id: "recent", label: "Recent Activities", icon: TrendingUp, accent: "text-slate-700" }
   ];
 
-  return <div className="mx-auto max-w-7xl space-y-4 sm:space-y-5">
-    <header className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex items-start gap-3">
-          <span className="rounded-xl bg-orange-50 p-2.5 text-[#ff6600]"><BarChart3 className="h-5 w-5" /></span>
-          <div>
-            <h1 className="text-lg font-extrabold text-slate-900 sm:text-xl">Sales Reports</h1>
-            <p className="mt-1 text-xs text-slate-500">Review personal activity, team execution, and sales performance.</p>
-          </div>
-        </div>
-        <label className="text-xs font-semibold text-slate-600">Reporting period
-          <select value={period} onChange={(event) => setPeriod(event.target.value as Period)} className="ml-2 h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-700">
-            {Object.entries(periodLabel).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-          </select>
-        </label>
-      </div>
-      <nav aria-label="Sales report sections" className="mt-5 flex gap-1 overflow-x-auto border-b border-slate-200">
-        {tabs.filter((item) => !item.managerOnly || currentUser.role === "manager").map((item) => {
-          const Icon = item.icon;
-          return <button key={item.id} type="button" onClick={() => setTab(item.id)} className={`inline-flex shrink-0 items-center gap-2 border-b-2 px-4 py-2.5 text-xs font-bold ${tab === item.id ? "border-[#ff6600] text-[#e65c00]" : "border-transparent text-slate-500 hover:text-slate-800"}`}>
-            <Icon className="h-4 w-4" /> {item.label}
-          </button>;
-        })}
-      </nav>
-    </header>
-
-    {teamError && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700">{teamError}</p>}
-
-    {tab !== "kpi" && <>
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <ReportMetric icon={<ActivityIcon className="h-4 w-4" />} label="Total activities" value={selectedActivities.length.toString()} accent="text-indigo-700" />
-        <ReportMetric icon={<CheckCircle2 className="h-4 w-4" />} label="Completed" value={completed.toString()} accent="text-emerald-700" />
-        <ReportMetric icon={<Clock3 className="h-4 w-4" />} label="Overdue" value={overdue.toString()} accent="text-rose-700" />
-        <ReportMetric icon={<Target className="h-4 w-4" />} label="Completion rate" value={`${completionRate}%`} accent="text-orange-700" />
-      </section>
-      <ActivityReportTable activities={selectedActivities} onSelectLead={onSelectLead} emptyMessage={tab === "mine" ? "No activity recorded for you in this period." : directReports.length ? "No team activity recorded in this period." : "No users currently report to you."} />
-    </>}
-
-    {tab === "kpi" && <>
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <ReportMetric icon={<UsersRound className="h-4 w-4" />} label="Team members" value={teamMembers.length.toString()} accent="text-indigo-700" />
-        <ReportMetric icon={<TrendingUp className="h-4 w-4" />} label="New leads" value={totals.leads.toString()} accent="text-orange-700" />
-        <ReportMetric icon={<Target className="h-4 w-4" />} label="Lead conversion" value={`${totals.leads ? Math.round((totals.converted / totals.leads) * 100) : 0}%`} accent="text-emerald-700" />
-        <ReportMetric icon={<BarChart3 className="h-4 w-4" />} label="Open pipeline" value={formatCompactINR(totals.pipeline)} accent="text-violet-700" />
-      </section>
-      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-200 px-4 py-4 sm:px-5">
-          <h2 className="text-sm font-bold text-slate-900">Team KPI performance</h2>
-          <p className="mt-1 text-xs text-slate-500">Lead and activity KPIs for {periodLabel[period].toLocaleLowerCase()}.</p>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[820px] text-left text-xs">
-            <thead><tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-wide text-slate-500"><th className="px-4 py-3">Team member</th><th className="px-4 py-3 text-right">Leads</th><th className="px-4 py-3 text-right">Converted</th><th className="px-4 py-3 text-right">Conversion</th><th className="px-4 py-3 text-right">Activities</th><th className="px-4 py-3 text-right">Completion</th><th className="px-4 py-3 text-right">Open pipeline</th></tr></thead>
-            <tbody className="divide-y divide-slate-100">
-              {memberKpis.map((member) => <tr key={member.id} className="hover:bg-slate-50">
-                <td className="px-4 py-3"><p className="font-semibold text-slate-800">{member.name}</p><p className="mt-0.5 text-[11px] text-slate-500">{member.jobTitle || member.email}</p></td>
-                <td className="px-4 py-3 text-right font-semibold text-slate-700">{member.leads}</td>
-                <td className="px-4 py-3 text-right text-slate-600">{member.converted}</td>
-                <td className="px-4 py-3 text-right"><RateBadge value={member.conversionRate} /></td>
-                <td className="px-4 py-3 text-right text-slate-600">{member.completedActivities}/{member.activities}</td>
-                <td className="px-4 py-3 text-right"><RateBadge value={member.activityRate} /></td>
-                <td className="px-4 py-3 text-right font-semibold text-slate-800">{formatCompactINR(member.pipeline)}</td>
-              </tr>)}
-              {!memberKpis.length && <tr><td colSpan={7} className="px-4 py-14 text-center text-sm text-slate-500">No users currently report to you.</td></tr>}
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </>}
-  </div>;
+  return <div className="mx-auto max-w-7xl space-y-4 sm:space-y-5"><header className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between"><div className="flex items-start gap-3"><span className="rounded-xl bg-orange-50 p-2.5 text-[#ff6600]"><BarChart3 className="h-5 w-5" /></span><div><h1 className="text-lg font-extrabold text-slate-900 sm:text-xl">Sales Reports & My Activity</h1><p className="mt-1 text-xs text-slate-500">Database-backed activity, follow-up, lead, and team performance reporting.</p></div></div><div className="flex flex-wrap items-center gap-2"><select aria-label="Reporting period" value={period} onChange={(event) => setPeriod(event.target.value as Period)} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-700"><option value="today">Today</option><option value="yesterday">Yesterday</option><option value="week">This week</option><option value="month">This month</option><option value="custom">Custom range</option></select>{period === "custom" && <><input aria-label="Start date" type="date" value={customStart} onChange={(event) => setCustomStart(event.target.value)} className="h-9 rounded-lg border px-2 text-xs" /><input aria-label="End date" type="date" min={customStart} value={customEnd} onChange={(event) => setCustomEnd(event.target.value)} className="h-9 rounded-lg border px-2 text-xs" /></>}</div></div>
+    <nav aria-label="Sales report sections" className="mt-5 flex gap-1 overflow-x-auto border-b border-slate-200"><Tab active={tab === "mine"} onClick={() => setTab("mine")} icon={UserRound} label="My Activity" />{currentUser.role !== "user" && <><Tab active={tab === "team"} onClick={() => setTab("team")} icon={UsersRound} label={currentUser.role === "admin" ? "Organization Activity" : "Team Activity"} /><Tab active={tab === "kpi"} onClick={() => setTab("kpi")} icon={BarChart3} label={currentUser.role === "admin" ? "Organization KPI" : "Team KPI"} /></>}</nav>
+  </header>{teamError && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700">{teamError}</p>}
+  {tab !== "kpi" ? <><section className="grid grid-cols-2 gap-3 md:grid-cols-4">{cards.map((card) => <ReportMetric key={card.id} {...card} value={counts[card.id]} selected={drilldown === card.id} onClick={() => setDrilldown(card.id)} />)}</section>
+    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"><div className="flex flex-col gap-3 border-b p-4 sm:flex-row"><div className="relative flex-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search lead, contact, owner, outcome, or remarks" className="h-10 w-full rounded-lg border pl-9 pr-3 text-sm" /></div><select aria-label="Activity type" value={activityType} onChange={(event) => setActivityType(event.target.value as typeof activityType)} disabled={drilldown === "leads"} className="h-10 rounded-lg border bg-white px-3 text-xs disabled:opacity-50"><option value="All">All activity types</option>{["Call", "WhatsApp", "Meeting", "Email", "Requirement Log", "Proposal", "System"].map((type) => <option key={type}>{type}</option>)}</select></div>
+      {drilldown === "leads" ? <LeadDetails leads={visibleLeads} onSelectLead={onSelectLead} /> : <ActivityDetails activities={visibleActivities} leads={leads} onSelectLead={onSelectLead} />}
+      <footer className="flex items-center justify-between border-t px-4 py-3 text-[11px] text-slate-500"><span>{detailCount} matching records</span><div className="flex items-center gap-2"><button disabled={page === 1} onClick={() => setPage((value) => value - 1)} className="rounded border px-2 py-1 disabled:opacity-40">Previous</button><span>Page {page} of {pageCount}</span><button disabled={page === pageCount} onClick={() => setPage((value) => value + 1)} className="rounded border px-2 py-1 disabled:opacity-40">Next</button></div></footer></section></> : <KpiTable members={memberKpis} />}</div>;
 }
 
-function ActivityReportTable({ activities, onSelectLead, emptyMessage }: { activities: Activity[]; onSelectLead: (leadId: string) => void; emptyMessage: string }) {
-  const sorted = [...activities].sort((left, right) => `${right.date} ${right.time}`.localeCompare(`${left.date} ${left.time}`));
-  return <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-    <div className="border-b border-slate-200 px-4 py-4 sm:px-5"><h2 className="text-sm font-bold text-slate-900">Activity report</h2><p className="mt-1 text-xs text-slate-500">{sorted.length} recorded activities</p></div>
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[760px] text-left text-xs">
-        <thead><tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-wide text-slate-500"><th className="px-4 py-3">Activity</th><th className="px-4 py-3">Lead / company</th><th className="px-4 py-3">Owner</th><th className="px-4 py-3">Date</th><th className="px-4 py-3">Status</th></tr></thead>
-        <tbody className="divide-y divide-slate-100">
-          {sorted.map((activity) => <tr key={activity.id} className="hover:bg-slate-50">
-            <td className="max-w-sm px-4 py-3"><p className="font-semibold text-slate-800">{activity.title}</p><p className="mt-1 line-clamp-1 text-[11px] text-slate-500">{activity.type} · {activity.description || "No notes"}</p></td>
-            <td className="px-4 py-3">{activity.leadId ? <button type="button" onClick={() => onSelectLead(activity.leadId!)} className="font-semibold text-slate-700 hover:text-[#ff6600]">{activity.company || activity.leadName}</button> : <span className="text-slate-500">{activity.company || "General activity"}</span>}</td>
-            <td className="px-4 py-3 text-slate-600">{activity.user}</td>
-            <td className="whitespace-nowrap px-4 py-3"><p className="font-mono text-slate-700">{activity.date}</p><p className="mt-0.5 text-[11px] text-slate-500">{activity.time}</p></td>
-            <td className="px-4 py-3"><span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${activity.status === "Completed" ? "bg-emerald-50 text-emerald-700" : "bg-orange-50 text-orange-700"}`}>{activity.status}</span></td>
-          </tr>)}
-          {!sorted.length && <tr><td colSpan={5} className="px-4 py-14 text-center text-sm text-slate-500">{emptyMessage}</td></tr>}
-        </tbody>
-      </table>
-    </div>
-  </section>;
-}
+function Tab({ active, onClick, icon: Icon, label }: { active: boolean; onClick: () => void; icon: typeof UserRound; label: string }) { return <button type="button" onClick={onClick} className={`inline-flex shrink-0 items-center gap-2 border-b-2 px-4 py-2.5 text-xs font-bold ${active ? "border-[#ff6600] text-[#e65c00]" : "border-transparent text-slate-500"}`}><Icon className="h-4 w-4" />{label}</button>; }
+function ReportMetric({ label, value, icon: Icon, accent, selected, onClick }: { label: string; value: number; icon: typeof Phone; accent: string; selected: boolean; onClick: () => void }) { return <button type="button" aria-pressed={selected} onClick={onClick} className={`rounded-xl border bg-white p-4 text-left ${selected ? "border-[#ff6600] ring-2 ring-orange-100" : "border-slate-200 hover:border-orange-200"}`}><span className={accent}><Icon className="h-4 w-4" /></span><p className="mt-3 text-[10px] font-bold uppercase text-slate-500">{label}</p><p className={`mt-1 text-xl font-extrabold ${accent}`}>{value}</p></button>; }
 
-function ReportMetric({ icon, label, value, accent }: { icon: React.ReactNode; label: string; value: string; accent: string }) {
-  return <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><div className={`flex items-center gap-2 ${accent}`}>{icon}<span className="text-[10px] font-bold uppercase tracking-wide">{label}</span></div><p className={`mt-2 text-xl font-extrabold ${accent}`}>{value}</p></div>;
+function ActivityDetails({ activities, leads, onSelectLead }: { activities: Activity[]; leads: Lead[]; onSelectLead: (id: string) => void }) {
+  return <div className="overflow-x-auto"><table className="w-full min-w-[1100px] text-left text-xs"><thead><tr className="border-b bg-slate-50 text-[10px] uppercase text-slate-500"><th className="px-4 py-3">Date / time</th><th className="px-4 py-3">Owner</th><th className="px-4 py-3">Lead / customer</th><th className="px-4 py-3">Contact</th><th className="px-4 py-3">Type / channel</th><th className="px-4 py-3">Action / outcome</th><th className="px-4 py-3">Remarks</th><th className="px-4 py-3">Next follow-up</th></tr></thead><tbody className="divide-y">{activities.map((activity) => { const lead = leads.find((item) => item.id === activity.leadId); return <tr key={activity.id}><td className="whitespace-nowrap px-4 py-3 font-mono">{activity.date}<br /><span className="text-slate-500">{activity.time}</span></td><td className="px-4 py-3">{activity.user}</td><td className="px-4 py-3">{activity.leadId ? <button onClick={() => onSelectLead(activity.leadId!)} className="font-semibold hover:text-orange-600">{activity.company || activity.leadName}</button> : "General activity"}</td><td className="px-4 py-3">{activity.contactPerson || activity.leadName || "—"}{lead?.phone && <div className="text-slate-500">{lead.phone}</div>}</td><td className="px-4 py-3">{activity.type}<div className="text-slate-500">{activity.channel || (activity.type === "WhatsApp" ? "WhatsApp" : "—")}</div></td><td className="px-4 py-3"><b>{activity.title}</b><div className="text-slate-500">{activity.outcome || activity.status}</div></td><td className="max-w-xs px-4 py-3">{activity.description || "—"}</td><td className="px-4 py-3">{activity.followUpDate || lead?.nextFollowUp || "—"}</td></tr>; })}{!activities.length && <tr><td colSpan={8} className="px-4 py-14 text-center text-sm text-slate-500">No authorized activities match these filters.</td></tr>}</tbody></table></div>;
 }
-
-function RateBadge({ value }: { value: number }) {
-  const classes = value >= 75 ? "bg-emerald-50 text-emerald-700" : value >= 40 ? "bg-orange-50 text-orange-700" : "bg-slate-100 text-slate-600";
-  return <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${classes}`}>{value}%</span>;
-}
+function LeadDetails({ leads, onSelectLead }: { leads: Lead[]; onSelectLead: (id: string) => void }) { return <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-xs"><thead><tr className="border-b bg-slate-50 text-[10px] uppercase text-slate-500"><th className="px-4 py-3">Lead</th><th className="px-4 py-3">Company</th><th className="px-4 py-3">Owner</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Priority</th><th className="px-4 py-3">Follow-up</th></tr></thead><tbody className="divide-y">{leads.map((lead) => <tr key={lead.id}><td className="px-4 py-3"><button onClick={() => onSelectLead(lead.id)} className="font-semibold hover:text-orange-600">{lead.name}</button></td><td className="px-4 py-3">{lead.company}</td><td className="px-4 py-3">{lead.leadOwner || "Unassigned"}</td><td className="px-4 py-3">{lead.status}</td><td className="px-4 py-3">{lead.priority}</td><td className="px-4 py-3">{lead.nextFollowUp || "—"} {lead.nextFollowUpTime}</td></tr>)}{!leads.length && <tr><td colSpan={6} className="px-4 py-14 text-center text-sm text-slate-500">No assigned leads match these filters.</td></tr>}</tbody></table></div>; }
+function KpiTable({ members }: { members: Array<StaffUser & { leads: number; converted: number; activities: number; completed: number; conversionRate: number; completionRate: number; pipeline: number }> }) { return <section className="overflow-hidden rounded-2xl border bg-white"><div className="border-b px-5 py-4"><h2 className="text-sm font-bold">Team KPI performance</h2><p className="text-xs text-slate-500">Only direct reports in the authorized team scope are included.</p></div><div className="overflow-x-auto"><table className="w-full min-w-[820px] text-left text-xs"><thead><tr className="border-b bg-slate-50 text-[10px] uppercase text-slate-500"><th className="px-4 py-3">Team member</th><th className="px-4 py-3 text-right">Leads</th><th className="px-4 py-3 text-right">Converted</th><th className="px-4 py-3 text-right">Conversion</th><th className="px-4 py-3 text-right">Activities</th><th className="px-4 py-3 text-right">Completion</th><th className="px-4 py-3 text-right">Open pipeline</th></tr></thead><tbody className="divide-y">{members.map((member) => <tr key={member.id}><td className="px-4 py-3"><b>{member.name}</b><div className="text-slate-500">{member.jobTitle || member.email}</div></td><td className="px-4 py-3 text-right">{member.leads}</td><td className="px-4 py-3 text-right">{member.converted}</td><td className="px-4 py-3 text-right">{member.conversionRate}%</td><td className="px-4 py-3 text-right">{member.completed}/{member.activities}</td><td className="px-4 py-3 text-right">{member.completionRate}%</td><td className="px-4 py-3 text-right"><b>{formatCompactINR(member.pipeline)}</b></td></tr>)}{!members.length && <tr><td colSpan={7} className="px-4 py-14 text-center text-sm text-slate-500">No users currently report to you.</td></tr>}</tbody></table></div></section>; }

@@ -6,7 +6,7 @@ export interface StaffUser {
   id: string;
   email: string;
   name: string;
-  role: "manager" | "user";
+  role: "admin" | "manager" | "user";
   reportingManagerId: string | null;
   jobTitle: string;
   department: string;

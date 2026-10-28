@@ -90,7 +90,7 @@ const getEditorConfig = (
           { key: 'estimatedBudget', label: 'Estimated budget (INR)', type: 'number', min: 0 },
           { key: 'leadOwner', label: 'Lead owner', type: 'select', options: [
             { label: 'Unassigned', value: '' },
-            ...assignees.map((assignee) => ({ label: `${assignee.name} (${assignee.email})`, value: assignee.name })),
+            ...assignees.map((assignee) => ({ label: `${assignee.name} · ${assignee.role} (${assignee.email})`, value: assignee.name })),
             ...(item.record.leadOwner && !assignees.some((assignee) => assignee.name === item.record.leadOwner)
               ? [{ label: `${item.record.leadOwner} (inactive)`, value: item.record.leadOwner }]
               : [])
@@ -146,6 +146,10 @@ const getEditorConfig = (
           ] },
           { key: 'date', label: 'Date', type: 'date' },
           { key: 'time', label: 'Time' },
+          { key: 'contactPerson', label: 'Contact person' },
+          { key: 'outcome', label: 'Outcome' },
+          { key: 'followUpDate', label: 'Next follow-up', type: 'date' },
+          { key: 'channel', label: 'Message channel' },
           { key: 'status', label: 'Status', type: 'select', options: [
             ...(['Completed', 'Pending', 'Scheduled'] as const).map((value) => ({ label: value, value }))
           ] },
@@ -273,7 +277,7 @@ const getEditorConfig = (
 };
 
 function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUser; onStaffUserChange: (user: StaffUser) => void; onLogout: () => Promise<void> }) {
-  const allowedPages = staffUser.role === 'manager' ? allPageAccessIds : staffUser.pageAccess;
+  const allowedPages = staffUser.role === 'admin' ? allPageAccessIds : staffUser.pageAccess;
   const [currentView, setCurrentView] = useState<string>(() => allowedPages[0] ?? 'dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
@@ -458,6 +462,7 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
       case 'lead':
         if ((record as Lead).leadOwner !== editingRecord.record.leadOwner) {
           const owner = (record as Lead).leadOwner;
+          (record as Lead).leadOwnerId = staffAssignees.find((assignee) => assignee.name === owner)?.id ?? '';
           (record as Lead).status = owner
             ? editingRecord.record.status === 'New' ? 'Assigned' : editingRecord.record.status
             : editingRecord.record.status === 'Assigned' ? 'New' : editingRecord.record.status;
@@ -472,6 +477,9 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
             date: new Date().toISOString().split('T')[0],
             time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             user: staffUser.name,
+            activityOwnerId: staffUser.id,
+            contactPerson: (record as Lead).name,
+            source: 'system',
             priority: 'Medium',
             status: 'Completed',
             category: 'Today'
@@ -578,16 +586,63 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
   };
 
   const handleUpdateLeadStatus = (leadId: string, status: Lead['status']) => {
-    setLeads((prev) =>
-      prev.map((l) => (l.id === leadId ? { ...l, status } : l))
-    );
+    const lead = leads.find((item) => item.id === leadId);
+    if (lead) void handleInlineUpdateLead(lead, { status })
+      .catch((reason: unknown) => setSyncError(reason instanceof Error ? reason.message : 'Could not update lead status.'));
+  };
+
+  const handleInlineUpdateLead = async (lead: Lead, changes: Partial<Lead>) => {
+    const response = await fetch(`/api/leads/${encodeURIComponent(lead.id)}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(changes)
+    });
+    const result = await response.json().catch(() => ({})) as { data?: Lead; error?: string };
+    if (!response.ok || !result.data) throw new Error(result.error || `Could not update lead (${response.status})`);
+    const savedLead = result.data;
+    setLeads((current) => current.map((item) => item.id === lead.id ? savedLead : item));
+
+    const labels: Partial<Record<keyof Lead, string>> = {
+      leadOwner: 'Owner', status: 'Status', priority: 'Priority', nextFollowUp: 'Follow-up date',
+      nextFollowUpTime: 'Follow-up time', commercialNotes: 'Remarks'
+    };
+    const changedFields = Object.keys(changes).filter((key) => key !== 'leadOwnerId' && changes[key as keyof Lead] !== lead[key as keyof Lead]);
+    if (changedFields.length) {
+      const description = changedFields.map((key) => {
+        const field = key as keyof Lead;
+        return `${labels[field] ?? key}: ${String(lead[field] ?? '—')} → ${String(savedLead[field] ?? '—')}`;
+      }).join('; ');
+      const now = new Date();
+      setActivities((current) => [{
+        id: `act-audit-${crypto.randomUUID()}`,
+        leadId: lead.id,
+        leadName: lead.name,
+        company: lead.company,
+        type: 'System',
+        title: 'Lead updated',
+        description,
+        date: now.toISOString().slice(0, 10),
+        time: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        user: staffUser.name,
+        activityOwnerId: staffUser.id,
+        contactPerson: lead.name,
+        outcome: 'Updated',
+        followUpDate: savedLead.nextFollowUp,
+        source: 'system',
+        priority: 'Medium',
+        status: 'Completed',
+        category: 'Today'
+      }, ...current]);
+    }
   };
 
   const handleBulkAssignLeads = (leadIds: string[], owner: string) => {
     const selectedIds = new Set(leadIds);
     const selected = leads.filter((lead) => selectedIds.has(lead.id));
+    const ownerId = staffAssignees.find((assignee) => assignee.name === owner)?.id ?? '';
     setLeads((current) => current.map((lead) => selectedIds.has(lead.id)
-      ? { ...lead, leadOwner: owner, status: lead.status === 'New' ? 'Assigned' : lead.status }
+      ? { ...lead, leadOwner: owner, leadOwnerId: ownerId, status: lead.status === 'New' ? 'Assigned' : lead.status }
       : lead));
     const assignedAt = Date.now();
     const date = new Date().toISOString().split('T')[0];
@@ -604,6 +659,9 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
         date,
         time,
         user: staffUser.name,
+        activityOwnerId: staffUser.id,
+        contactPerson: lead.name,
+        source: 'system',
         priority: 'Medium',
         status: 'Completed',
         category: 'Today'
@@ -770,7 +828,7 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
   const handleAddNewLead = (newLeadData: Partial<Lead>) => {
     const fullLead = {
       ...newLeadData,
-      ...(staffUser.role === 'user' ? { leadOwner: staffUser.name, status: 'Assigned' as const } : {})
+      ...(staffUser.role === 'user' ? { leadOwner: staffUser.name, leadOwnerId: staffUser.id, status: 'Assigned' as const } : {})
     } as Lead;
     setLeads((current) => [fullLead, ...current]);
     const createdAt = Date.now();
@@ -786,6 +844,9 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
         date: fullLead.createdDate,
         time: 'Just now',
         user: staffUser.name,
+        activityOwnerId: staffUser.id,
+        contactPerson: fullLead.name,
+        source: 'manual',
         priority: fullLead.priority === 'Urgent' ? 'High' : fullLead.priority,
         status: 'Completed',
         category: 'Today'
@@ -803,6 +864,9 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
         date: fullLead.createdDate,
         time: 'Just now',
         user: staffUser.name,
+        activityOwnerId: staffUser.id,
+        contactPerson: fullLead.name,
+        source: 'system',
         priority: 'Medium',
         status: 'Completed',
         category: 'Today'
@@ -829,7 +893,7 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
       if (email) existingEmails.add(email);
       if (phone) existingPhones.add(phone);
       accepted.push(staffUser.role === 'user'
-        ? { ...lead, leadOwner: staffUser.name, status: lead.status === 'New' ? 'Assigned' : lead.status }
+        ? { ...lead, leadOwner: staffUser.name, leadOwnerId: staffUser.id, status: lead.status === 'New' ? 'Assigned' : lead.status }
         : lead);
     });
     if (accepted.length) {
@@ -846,6 +910,9 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
           date: new Date().toISOString().split('T')[0],
           time: 'Just now',
           user: staffUser.name,
+          activityOwnerId: staffUser.id,
+          contactPerson: lead.name,
+          source: 'system',
           priority: 'Medium',
           status: 'Completed',
           category: 'Today'
@@ -857,17 +924,25 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
   };
 
   const handleAddActivity = (activity: Partial<Activity>) => {
+    const relatedLead = activity.leadId ? leads.find((lead) => lead.id === activity.leadId) : currentLead;
+    const selectedOwner = staffAssignees.find((assignee) => assignee.name === activity.user);
     const newAct: Activity = {
-      id: `act-${Date.now()}`,
-      leadId: activity.leadId || currentLead.id,
-      leadName: activity.leadName || currentLead.name,
-      company: activity.company || currentLead.company,
+      id: `act-${crypto.randomUUID()}`,
+      leadId: activity.leadId || relatedLead?.id,
+      leadName: activity.leadName || relatedLead?.name,
+      company: activity.company || relatedLead?.company,
       type: activity.type || 'Call',
       title: activity.title || 'Follow-up Activity',
       description: activity.description || '',
       date: activity.date || new Date().toISOString().split('T')[0],
       time: activity.time || '12:00 PM',
-      user: staffUser.role === 'user' ? staffUser.name : activity.user || 'Unassigned',
+      user: staffUser.role === 'user' ? staffUser.name : activity.user || staffUser.name,
+      activityOwnerId: staffUser.role === 'user' ? staffUser.id : activity.activityOwnerId || selectedOwner?.id || staffUser.id,
+      contactPerson: activity.contactPerson || relatedLead?.name || '',
+      outcome: activity.outcome || '',
+      followUpDate: activity.followUpDate || relatedLead?.nextFollowUp || '',
+      channel: activity.channel || (activity.type === 'WhatsApp' ? 'WhatsApp' : ''),
+      source: activity.source || 'manual',
       priority: activity.priority || 'High',
       status: activity.status || 'Scheduled',
       category: activity.category || 'Today'
@@ -1146,7 +1221,7 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
         <div className="flex min-h-10 items-center justify-between gap-3 border-b border-slate-100 bg-white px-4 py-1.5 text-xs text-slate-500 sm:px-6">
           <span>{syncError ? <span role="alert" className="text-rose-700">Shared-data sync failed: {syncError}</span> : `Signed in as ${staffUser.name} (${staffUser.role})`}</span>
           <div className="flex items-center gap-2">
-            {staffUser.role === 'manager' && <button type="button" onClick={() => setShowStaffInvite(true)} className="rounded-lg border border-slate-200 px-3 py-1.5 font-semibold text-slate-600 hover:bg-slate-50">Invite staff</button>}
+            {staffUser.role !== 'user' && <button type="button" onClick={() => setShowStaffInvite(true)} className="rounded-lg border border-slate-200 px-3 py-1.5 font-semibold text-slate-600 hover:bg-slate-50">Invite staff</button>}
             <button type="button" onClick={() => setShowMyProfile(true)} className="rounded-lg border border-slate-200 px-3 py-1.5 font-semibold text-slate-600 hover:bg-slate-50">My Profile</button>
             <button type="button" onClick={() => {
               void onLogout().catch((reason: unknown) => setSyncError(reason instanceof Error ? reason.message : 'Could not sign out.'));
@@ -1197,6 +1272,8 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
               onSelectLead={handleSelectLead}
               onOpenNewLeadModal={() => setIsNewLeadModalOpen(true)}
               onUpdateLeadStatus={handleUpdateLeadStatus}
+              onInlineUpdate={handleInlineUpdateLead}
+              canAssignOwner={staffUser.role !== 'user'}
               onBulkAssign={handleBulkAssignLeads}
               onEditLead={(record) => setEditingRecord({ type: 'lead', record })}
               onDeleteLead={handleDeleteLead}
@@ -1315,7 +1392,7 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
             <AnalyticsHub leads={leads} opportunities={opportunities} invoices={invoices} />
           )}
 
-          {currentView === 'admin' && staffUser.role === 'manager' && <AdminHub onInviteStaff={() => setShowStaffInvite(true)} />}
+          {currentView === 'admin' && staffUser.role === 'admin' && <AdminHub onInviteStaff={() => setShowStaffInvite(true)} />}
 
           {currentView === 'org-setup' && (
             <OrganizationSetup profile={organization} onSave={handleSaveOrganization} />
