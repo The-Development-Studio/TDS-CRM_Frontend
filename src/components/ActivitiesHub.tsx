@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import type { Activity, Lead } from '../types/crm';
-import { CalendarClock, Check, CircleAlert, Clock3, Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import { CalendarClock, Check, CircleAlert, Clock3, Contact, Pencil, Plus, Search, Target, Trash2, Trophy, Users } from 'lucide-react';
 import { RecordEditorField, RecordEditorModal, RecordEditorValues } from './RecordEditorModal';
 
 interface ActivitiesHubProps {
@@ -11,6 +11,7 @@ interface ActivitiesHubProps {
   onDeleteActivity: (activity: Activity) => void;
   onCompleteActivity: (activity: Activity) => void;
   onSelectLead: (leadId: string) => void;
+  currentUserId: string;
   currentUserName: string;
   lockOwner?: boolean;
 }
@@ -53,6 +54,7 @@ export const ActivitiesHub: React.FC<ActivitiesHubProps> = ({
   onDeleteActivity,
   onCompleteActivity,
   onSelectLead,
+  currentUserId,
   currentUserName,
   lockOwner = false
 }) => {
@@ -63,7 +65,18 @@ export const ActivitiesHub: React.FC<ActivitiesHubProps> = ({
   const [quickFilter, setQuickFilter] = useState<'due' | 'upcoming' | 'completed' | null>(null);
   const [page, setPage] = useState(1);
 
-  const filteredActivities = activities
+  const ownerName = currentUserName.trim().toLowerCase();
+  const myActivities = activities.filter((activity) => activity.activityOwnerId
+    ? activity.activityOwnerId === currentUserId
+    : activity.user.trim().toLowerCase() === ownerName);
+  const myLeads = leads.filter((lead) => lead.leadOwnerId
+    ? lead.leadOwnerId === currentUserId
+    : lead.leadOwner.trim().toLowerCase() === ownerName);
+  const tomorrowDate = new Date(`${today}T00:00:00`);
+  tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+  const tomorrow = tomorrowDate.toISOString().slice(0, 10);
+
+  const filteredActivities = myActivities
     .filter((activity) => {
       const query = search.trim().toLowerCase();
       const matchesSearch = !query || [activity.title, activity.description, activity.leadName, activity.company, activity.user]
@@ -80,9 +93,18 @@ export const ActivitiesHub: React.FC<ActivitiesHubProps> = ({
     })
     .sort((left, right) => `${left.date} ${left.time}`.localeCompare(`${right.date} ${right.time}`));
 
-  const dueCount = activities.filter((activity) => activity.status !== 'Completed' && activity.date <= today).length;
-  const upcomingCount = activities.filter((activity) => activity.status !== 'Completed' && activity.date > today).length;
-  const completedCount = activities.filter((activity) => activity.status === 'Completed').length;
+  const dueCount = myActivities.filter((activity) => activity.status !== 'Completed' && activity.date <= today).length;
+  const upcomingCount = myActivities.filter((activity) => activity.status !== 'Completed' && activity.date > today).length;
+  const completedCount = myActivities.filter((activity) => activity.status === 'Completed').length;
+  const dashboardMetrics = [
+    { label: 'Total lead count', value: myLeads.length, icon: <Users className="h-4 w-4" />, accent: 'text-sky-700' },
+    { label: 'Today follow-up', value: myLeads.filter((lead) => lead.nextFollowUp === today).length, icon: <CalendarClock className="h-4 w-4" />, accent: 'text-orange-700' },
+    { label: 'Tomorrow follow-up', value: myLeads.filter((lead) => lead.nextFollowUp === tomorrow).length, icon: <Clock3 className="h-4 w-4" />, accent: 'text-indigo-700' },
+    { label: 'Overdue', value: myLeads.filter((lead) => lead.nextFollowUp && lead.nextFollowUp < today && !['Converted', 'Won'].includes(lead.status)).length, icon: <CircleAlert className="h-4 w-4" />, accent: 'text-rose-700' },
+    { label: 'Contacted count', value: myLeads.filter((lead) => lead.status === 'Contacted').length, icon: <Contact className="h-4 w-4" />, accent: 'text-violet-700' },
+    { label: 'Qualified count', value: myLeads.filter((lead) => lead.status === 'Qualified').length, icon: <Target className="h-4 w-4" />, accent: 'text-emerald-700' },
+    { label: 'Converted count', value: myLeads.filter((lead) => lead.status === 'Converted').length, icon: <Trophy className="h-4 w-4" />, accent: 'text-amber-700' }
+  ];
   const pageSize = 25;
   const pageCount = Math.max(1, Math.ceil(filteredActivities.length / pageSize));
   const visibleActivities = filteredActivities.slice((page - 1) * pageSize, page * pageSize);
@@ -121,8 +143,8 @@ export const ActivitiesHub: React.FC<ActivitiesHubProps> = ({
         <div className="flex items-start gap-3">
           <span className="rounded-xl bg-orange-50 p-2.5 text-[#ff6600]"><CalendarClock className="h-5 w-5" aria-hidden="true" /></span>
           <div>
-            <h1 className="text-lg font-extrabold text-slate-900 sm:text-xl">Activities Management</h1>
-            <p className="mt-1 text-xs text-slate-500">Track follow-ups, customer meetings, and completed work.</p>
+            <h1 className="text-lg font-extrabold text-slate-900 sm:text-xl">My Activity</h1>
+            <p className="mt-1 text-xs text-slate-500">Your lead dashboard, follow-ups, and activity workspace.</p>
           </div>
         </div>
         <button type="button" onClick={() => setShowCreate(true)} className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#ff6600] px-4 py-2.5 text-xs font-semibold text-white hover:bg-[#e65c00]">
@@ -130,10 +152,14 @@ export const ActivitiesHub: React.FC<ActivitiesHubProps> = ({
         </button>
       </header>
 
+      <section aria-label="My activity dashboard" className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
+        {dashboardMetrics.map((metric) => <DashboardMetric key={metric.label} {...metric} />)}
+      </section>
+
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Metric icon={<CircleAlert className="h-4 w-4" />} label="Due or overdue" value={dueCount} accent="text-rose-600" selected={quickFilter === 'due'} onClick={() => setQuickFilter((value) => value === 'due' ? null : 'due')} />
-        <Metric icon={<Clock3 className="h-4 w-4" />} label="Upcoming" value={upcomingCount} accent="text-orange-700" selected={quickFilter === 'upcoming'} onClick={() => setQuickFilter((value) => value === 'upcoming' ? null : 'upcoming')} />
-        <Metric icon={<Check className="h-4 w-4" />} label="Completed" value={completedCount} accent="text-emerald-700" selected={quickFilter === 'completed'} onClick={() => setQuickFilter((value) => value === 'completed' ? null : 'completed')} />
+        <Metric icon={<CircleAlert className="h-4 w-4" />} label="Due activities" value={dueCount} accent="text-rose-600" selected={quickFilter === 'due'} onClick={() => setQuickFilter((value) => value === 'due' ? null : 'due')} />
+        <Metric icon={<Clock3 className="h-4 w-4" />} label="Upcoming activities" value={upcomingCount} accent="text-orange-700" selected={quickFilter === 'upcoming'} onClick={() => setQuickFilter((value) => value === 'upcoming' ? null : 'upcoming')} />
+        <Metric icon={<Check className="h-4 w-4" />} label="Completed activities" value={completedCount} accent="text-emerald-700" selected={quickFilter === 'completed'} onClick={() => setQuickFilter((value) => value === 'completed' ? null : 'completed')} />
       </section>
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -200,4 +226,12 @@ const Metric: React.FC<{ icon: React.ReactNode; label: string; value: number; ac
     <span className={`${accent}`}>{icon}</span>
     <div><p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</p><p className={`mt-1 text-lg font-extrabold ${accent}`}>{value}</p></div>
   </button>
+);
+
+const DashboardMetric: React.FC<{ icon: React.ReactNode; label: string; value: number; accent: string }> = ({ icon, label, value, accent }) => (
+  <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <span className={accent}>{icon}</span>
+    <p className="mt-3 text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</p>
+    <p className={`mt-1 text-xl font-extrabold ${accent}`}>{value}</p>
+  </div>
 );

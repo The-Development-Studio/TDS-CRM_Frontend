@@ -42,7 +42,20 @@ export const loadOrganizationProfile = (): OrganizationProfile => {
       return DEFAULT_ORGANIZATION_PROFILE;
     }
 
-    const { pan: _legacyPan, ...savedFields } = parsedProfile as Partial<OrganizationProfile> & { pan?: string };
+    const {
+      pan: _legacyPan,
+      id: _id,
+      organizationKey: _organizationKey,
+      createdAt: _createdAt,
+      updatedAt: _updatedAt,
+      ...savedFields
+    } = parsedProfile as Partial<OrganizationProfile> & {
+      pan?: string;
+      id?: string;
+      organizationKey?: string;
+      createdAt?: string;
+      updatedAt?: string;
+    };
     return { ...DEFAULT_ORGANIZATION_PROFILE, ...savedFields };
   } catch {
     return DEFAULT_ORGANIZATION_PROFILE;

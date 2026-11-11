@@ -217,10 +217,17 @@ const getEditorConfig = (
             required: true,
             helperText: 'Selecting a customer fills the GSTIN, billing address, place of supply, and supply type.'
           },
+          { key: 'customerContact', label: 'Contact person' },
+          { key: 'customerEmail', label: 'Customer email', type: 'email' },
+          { key: 'customerPhone', label: 'Customer phone', type: 'tel' },
           { key: 'customerGstin', label: 'Customer GSTIN' },
           { key: 'billingAddress', label: 'Billing address', type: 'textarea', fullWidth: true },
-          { key: 'description', label: 'Service description', type: 'textarea', fullWidth: true, required: true },
+          { key: 'shippingAddress', label: 'Shipping address', type: 'textarea', fullWidth: true, helperText: 'Leave blank when it is the same as the billing address.' },
+          { key: 'subject', label: 'Subject', fullWidth: true, required: true },
+          { key: 'description', label: 'Service description / scope', type: 'textarea', fullWidth: true, required: true },
+          { key: 'orderNumber', label: 'Order / reference number' },
           { key: 'purchaseOrderNumber', label: 'Purchase order number' },
+          { key: 'salesperson', label: 'Salesperson' },
           { key: 'sacCode', label: 'SAC / HSN code', required: item.record.type === 'Tax Invoice' },
           { key: 'placeOfSupply', label: 'Place of supply (State & code)', required: item.record.type === 'Tax Invoice' },
           { key: 'supplyType', label: 'Nature of supply', type: 'select', options: [
@@ -230,6 +237,8 @@ const getEditorConfig = (
           ], required: true },
           { key: 'lineItems', label: 'Invoice line items', type: 'line-items', fullWidth: true, required: true },
           { key: 'discount', label: 'Discount (INR)', type: 'number', min: 0 },
+          { key: 'shippingCharges', label: 'Shipping / handling (INR)', type: 'number', min: 0 },
+          { key: 'adjustment', label: 'Adjustment (+/- INR)', type: 'number', step: 0.01 },
           { key: 'gstRate', label: 'GST rate', type: 'select', options: [0, 5, 12, 18, 28].map((rate) => ({ label: `${rate}%`, value: String(rate) })), required: true },
           { key: 'reverseCharge', label: 'Reverse charge', type: 'select', options: [
             { label: 'No', value: 'No' }, { label: 'Yes', value: 'Yes' }
@@ -543,6 +552,8 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
           supplyType: invoice.supplyType ?? 'Intra-state',
           reverseCharge: invoice.reverseCharge ?? 'No'
         });
+        const shippingCharges = Number(invoice.shippingCharges ?? 0);
+        const adjustment = Number(invoice.adjustment ?? 0);
         const invoiceNumberSuffix = invoice.invoiceNo.replace(/^(INV|PI)-/, '');
         const normalizedInvoice = {
           ...invoice,
@@ -551,11 +562,13 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
           gstRate: Number(invoice.gstRate ?? 0),
           taxableAmount,
           discount: Number(invoice.discount ?? 0),
+          shippingCharges,
+          adjustment,
           cgstAmount: gst.cgst,
           sgstAmount: gst.sgst,
           igstAmount: gst.igst,
           totalTax: gst.totalTax,
-          amount: gst.grandTotal,
+          amount: Math.max(0, Math.round((gst.grandTotal + shippingCharges + adjustment) * 100) / 100),
           invoiceNo: `${invoice.type === 'Proforma' ? 'PI' : 'INV'}-${invoiceNumberSuffix}`
         };
         setInvoices((current) => current.some((item) => item.id === editingRecord.record.id)
@@ -746,12 +759,21 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
       type,
       taxableAmount,
       discount: 0,
+      shippingCharges: 0,
+      adjustment: 0,
       gstRate: 18,
       supplyType,
       placeOfSupply: customer?.state || organization.state,
       customerGstin: customer?.customerGstin || '',
+      customerContact: customer?.primaryContact || lead?.name || '',
+      customerEmail: customer?.email || lead?.email || '',
+      customerPhone: customer?.phone || lead?.phone || '',
       billingAddress: customer?.billingAddress || '',
+      shippingAddress: customer?.billingAddress || '',
       reverseCharge: 'No',
+      subject: proposal.title,
+      orderNumber: '',
+      salesperson: lead?.leadOwner || '',
       description: proposal.title,
       sacCode: '9983',
       lineItems: proposal.lineItems?.length ? proposal.lineItems : [{ id: crypto.randomUUID(), description: proposal.service || proposal.title, hsnSac: '9983', quantity: 1, rate: proposal.amount }],
@@ -1057,12 +1079,21 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
       sacCode: '9983',
       taxableAmount: 0,
       discount: 0,
+      shippingCharges: 0,
+      adjustment: 0,
       gstRate: 18,
       supplyType: customer?.state && organization.state && customer.state.toLowerCase() !== organization.state.toLowerCase() ? 'Inter-state' : 'Intra-state',
       placeOfSupply: customer?.state || organization.state,
       customerGstin: customer?.customerGstin || '',
+      customerContact: customer?.primaryContact || '',
+      customerEmail: customer?.email || '',
+      customerPhone: customer?.phone || '',
       billingAddress: customer?.billingAddress || '',
+      shippingAddress: customer?.billingAddress || '',
       reverseCharge: 'No',
+      subject: invoiceType === 'Proforma' ? 'Proforma invoice for services' : 'Invoice for services rendered',
+      orderNumber: '',
+      salesperson: customer?.relationshipManager || staffUser.name,
       cgstAmount: 0,
       sgstAmount: 0,
       igstAmount: 0,
@@ -1259,6 +1290,7 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
               onDeleteActivity={handleDeleteActivity}
               onCompleteActivity={handleCompleteActivity}
               onSelectLead={handleSelectLead}
+              currentUserId={staffUser.id}
               currentUserName={staffUser.name}
               lockOwner={staffUser.role === 'user'}
             />
@@ -1460,6 +1492,7 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
             values={editingRecord.record as unknown as RecordEditorValues}
             onSave={handleSaveEditedRecord}
             onClose={() => setEditingRecord(null)}
+            wide={editingRecord.type === 'invoice'}
             onFieldChange={editingRecord.type === 'invoice'
               ? (key, value) => {
                 if (key !== 'customer') return {};
@@ -1467,7 +1500,11 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
                 if (!selectedCustomer) {
                   return {
                     customerGstin: '',
+                    customerContact: '',
+                    customerEmail: '',
+                    customerPhone: '',
                     billingAddress: '',
+                    shippingAddress: '',
                     placeOfSupply: '',
                     supplyType: 'Intra-state'
                   };
@@ -1479,7 +1516,11 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
                   : 'Intra-state';
                 return {
                   customerGstin: selectedCustomer.customerGstin || '',
+                  customerContact: selectedCustomer.primaryContact || '',
+                  customerEmail: selectedCustomer.email || '',
+                  customerPhone: selectedCustomer.phone || '',
                   billingAddress: selectedCustomer.billingAddress || '',
+                  shippingAddress: selectedCustomer.billingAddress || '',
                   placeOfSupply: selectedCustomer.state || organization.state,
                   supplyType
                 };

@@ -44,11 +44,18 @@ interface FinancialDocument {
   paidAmount?: number;
   status?: string;
   customerGstin?: string;
+  customerPhone?: string;
   billingAddress?: string;
+  shippingAddress?: string;
+  subject?: string;
+  orderNumber?: string;
+  salesperson?: string;
   placeOfSupply?: string;
   sacCode?: string;
   taxableAmount?: number;
   discount?: number;
+  shippingCharges?: number;
+  adjustment?: number;
   gstRate?: number;
   supplyType?: Invoice['supplyType'];
   reverseCharge?: Invoice['reverseCharge'];
@@ -243,16 +250,25 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
       customer: invoice.customer,
       issueDate: invoice.issueDate,
       dueDate: invoice.dueDate,
-      description: `Services as per ${invoice.type.toLowerCase()} ${invoice.invoiceNo}`,
+      description: invoice.description || `Services as per ${invoice.type.toLowerCase()} ${invoice.invoiceNo}`,
       amount: invoice.amount,
       paidAmount: invoice.paidAmount,
       status: invoice.status,
       customerGstin: invoice.customerGstin,
+      contact: invoice.customerContact,
+      email: invoice.customerEmail,
+      customerPhone: invoice.customerPhone,
       billingAddress: invoice.billingAddress,
+      shippingAddress: invoice.shippingAddress,
+      subject: invoice.subject,
+      orderNumber: invoice.orderNumber,
+      salesperson: invoice.salesperson,
       placeOfSupply: invoice.placeOfSupply,
       sacCode: invoice.sacCode,
       taxableAmount: invoice.taxableAmount,
       discount: invoice.discount,
+      shippingCharges: invoice.shippingCharges,
+      adjustment: invoice.adjustment,
       gstRate: invoice.gstRate,
       supplyType: invoice.supplyType,
       reverseCharge: invoice.reverseCharge,
@@ -677,7 +693,7 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
                 </div>
               </header>
 
-              <div className="grid grid-cols-1 gap-5 py-5 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-5 py-5 sm:grid-cols-3">
                 <div>
                   <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-500">From</h3>
                   <p className="mt-1 text-sm font-bold">{documentPreview.organization.legalName}</p>
@@ -700,11 +716,17 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
                   <p className="mt-1 text-sm font-bold">{documentPreview.customer}</p>
                   {documentPreview.contact && <p className="text-xs text-slate-600">{documentPreview.contact}</p>}
                   {documentPreview.email && <p className="text-xs text-slate-600">{documentPreview.email}</p>}
+                  {documentPreview.customerPhone && <p className="text-xs text-slate-600">{documentPreview.customerPhone}</p>}
                   {documentPreview.billingAddress && <p className="whitespace-pre-wrap text-xs text-slate-600">{documentPreview.billingAddress}</p>}
                   {(documentPreview.kind === 'TAX INVOICE' || documentPreview.kind === 'PROFORMA INVOICE') && (
                     <p className="text-xs text-slate-600">GSTIN: {documentPreview.customerGstin || 'Unregistered'}</p>
                   )}
                 </div>
+                {documentPreview.shippingAddress && <div>
+                  <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Ship To</h3>
+                  <p className="mt-1 text-sm font-bold">{documentPreview.customer}</p>
+                  <p className="whitespace-pre-wrap text-xs text-slate-600">{documentPreview.shippingAddress}</p>
+                </div>}
               </div>
 
               <div className="grid grid-cols-2 gap-3 rounded-lg bg-slate-50 p-3 text-xs sm:grid-cols-4">
@@ -712,8 +734,16 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
                 {documentPreview.dueDate && <DocumentDetail label="Due Date" value={formatDocumentDate(documentPreview.dueDate)} />}
                 {documentPreview.validUntil && <DocumentDetail label="Valid Until" value={formatDocumentDate(documentPreview.validUntil)} />}
                 {documentPreview.purchaseOrderNumber && <DocumentDetail label="Purchase Order" value={documentPreview.purchaseOrderNumber} />}
+                {documentPreview.orderNumber && <DocumentDetail label="Order / Reference" value={documentPreview.orderNumber} />}
+                {documentPreview.salesperson && <DocumentDetail label="Salesperson" value={documentPreview.salesperson} />}
                 {documentPreview.status && <DocumentDetail label="Status" value={documentPreview.status} />}
               </div>
+
+              {documentPreview.subject && <section className="mt-5 rounded-lg border border-slate-200 p-4">
+                <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Subject</h3>
+                <p className="mt-1 text-sm font-semibold text-slate-800">{documentPreview.subject}</p>
+                {documentPreview.description && <p className="mt-2 whitespace-pre-wrap text-xs text-slate-600">{documentPreview.description}</p>}
+              </section>}
 
               {documentPreview.kind === 'QUOTATION' && (
                 <section className="mt-6 rounded-lg border border-orange-200 bg-orange-50 p-4">
@@ -733,7 +763,7 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
                 </div>
               )}
 
-              {documentPreview.kind === 'TAX INVOICE' && (
+              {(documentPreview.kind === 'TAX INVOICE' || documentPreview.kind === 'PROFORMA INVOICE') && (
                 <div className="mt-6 grid grid-cols-1 gap-3 rounded-lg border border-slate-200 p-4 text-xs sm:grid-cols-3">
                   <DocumentDetail label="Place of supply" value={documentPreview.placeOfSupply || 'Not configured'} />
                   <DocumentDetail label="HSN / SAC" value={documentPreview.sacCode || 'Not configured'} />
@@ -741,9 +771,9 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
                   <DocumentDetail label="Nature of supply" value={documentPreview.supplyType || 'Not configured'} />
                   <DocumentDetail label="Reverse charge" value={documentPreview.reverseCharge || 'No'} />
                   <DocumentDetail label="GST rate" value={`${documentPreview.gstRate ?? 0}%`} />
-                  {documentPreview.irn && <DocumentDetail label="IRN" value={documentPreview.irn} />}
-                  {documentPreview.acknowledgementNumber && <DocumentDetail label="IRP acknowledgement" value={documentPreview.acknowledgementNumber} />}
-                  {documentPreview.acknowledgementDate && <DocumentDetail label="Acknowledgement date" value={documentPreview.acknowledgementDate} />}
+                  {documentPreview.kind === 'TAX INVOICE' && documentPreview.irn && <DocumentDetail label="IRN" value={documentPreview.irn} />}
+                  {documentPreview.kind === 'TAX INVOICE' && documentPreview.acknowledgementNumber && <DocumentDetail label="IRP acknowledgement" value={documentPreview.acknowledgementNumber} />}
+                  {documentPreview.kind === 'TAX INVOICE' && documentPreview.acknowledgementDate && <DocumentDetail label="Acknowledgement date" value={documentPreview.acknowledgementDate} />}
                 </div>
               )}
 
@@ -766,13 +796,15 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
               )}
 
               <div className="mt-6 overflow-x-auto">
-                <table className={`w-full text-left text-xs ${documentPreview.kind === 'TAX INVOICE' ? 'min-w-[720px]' : 'min-w-[480px]'}`}>
+                <table className={`w-full text-left text-xs ${documentPreview.kind !== 'QUOTATION' ? 'min-w-[920px]' : 'min-w-[480px]'}`}>
                   <thead>
                     <tr className="border-y border-slate-300 text-[10px] font-bold uppercase tracking-wider text-slate-600">
-                      {documentPreview.kind === 'TAX INVOICE' ? (
+                      {documentPreview.kind !== 'QUOTATION' ? (
                         <>
                           <th className="py-3 pr-3">Description</th>
                           <th className="py-3 px-3 text-right">HSN / SAC</th>
+                          <th className="py-3 px-3 text-right">Qty</th>
+                          <th className="py-3 px-3 text-right">Rate</th>
                           <th className="py-3 px-3 text-right">Taxable value</th>
                           <th className="py-3 px-3 text-right">GST rate</th>
                           <th className="py-3 px-3 text-right">Tax amount</th>
@@ -791,11 +823,13 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
                   <tbody>
                     {documentPreview.lineItems?.length ? documentPreview.lineItems.map((item) => {
                       const lineAmount = item.quantity * item.rate;
-                      const lineTax = documentPreview.kind === 'TAX INVOICE' ? lineAmount * ((documentPreview.gstRate ?? 0) / 100) : 0;
+                      const lineTax = documentPreview.kind !== 'QUOTATION' ? lineAmount * ((documentPreview.gstRate ?? 0) / 100) : 0;
                       return <tr key={item.id} className="border-b border-slate-200">
                         <td className="py-4 pr-3 font-semibold">{item.description}</td>
-                        {documentPreview.kind === 'TAX INVOICE' ? <>
+                        {documentPreview.kind !== 'QUOTATION' ? <>
                           <td className="py-4 px-3 text-right">{item.hsnSac || documentPreview.sacCode || '—'}</td>
+                          <td className="py-4 px-3 text-right">{item.quantity}</td>
+                          <td className="py-4 px-3 text-right font-mono">{formatINR(item.rate)}</td>
                           <td className="py-4 px-3 text-right font-mono">{formatINR(lineAmount)}</td>
                           <td className="py-4 px-3 text-right">{documentPreview.gstRate ?? 0}%</td>
                           <td className="py-4 px-3 text-right font-mono">{formatINR(lineTax)}</td>
@@ -809,9 +843,11 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
                     }) : (
                     <tr className="border-b border-slate-200">
                       <td className="py-4 pr-3 font-semibold">{documentPreview.description}</td>
-                      {documentPreview.kind === 'TAX INVOICE' ? (
+                      {documentPreview.kind !== 'QUOTATION' ? (
                         <>
                           <td className="py-4 px-3 text-right">{documentPreview.sacCode || '—'}</td>
+                          <td className="py-4 px-3 text-right">1</td>
+                          <td className="py-4 px-3 text-right font-mono">{formatINR(documentPreview.taxableAmount ?? documentPreview.amount)}</td>
                           <td className="py-4 px-3 text-right font-mono">{formatINR(Math.max(0, (documentPreview.taxableAmount ?? documentPreview.amount) - (documentPreview.discount ?? 0)))}</td>
                           <td className="py-4 px-3 text-right">{documentPreview.gstRate ?? 0}%</td>
                           <td className="py-4 px-3 text-right font-mono">{formatINR(documentPreview.totalTax ?? 0)}</td>
@@ -831,16 +867,18 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
 
               <div className="ml-auto mt-5 w-full max-w-sm space-y-2 text-xs">
                 <div className="flex justify-between gap-4 text-slate-600">
-                  <span>{documentPreview.kind === 'TAX INVOICE' ? 'Taxable subtotal' : 'Subtotal'}</span>
+                  <span>{documentPreview.kind !== 'QUOTATION' ? 'Taxable subtotal' : 'Subtotal'}</span>
                   <span className="font-mono">{formatINR(Math.max(0, (documentPreview.taxableAmount ?? documentPreview.amount) - (documentPreview.discount ?? 0)))}</span>
                 </div>
-                {documentPreview.kind === 'TAX INVOICE' ? (
+                {documentPreview.kind !== 'QUOTATION' ? (
                   <>
                     {(documentPreview.discount ?? 0) > 0 && <div className="flex justify-between gap-4 text-slate-600"><span>Discount</span><span className="font-mono">-{formatINR(documentPreview.discount ?? 0)}</span></div>}
                     {(documentPreview.cgstAmount ?? 0) > 0 && <div className="flex justify-between gap-4 text-slate-600"><span>CGST ({(documentPreview.gstRate ?? 0) / 2}%)</span><span className="font-mono">{formatINR(documentPreview.cgstAmount ?? 0)}</span></div>}
                     {(documentPreview.sgstAmount ?? 0) > 0 && <div className="flex justify-between gap-4 text-slate-600"><span>SGST ({(documentPreview.gstRate ?? 0) / 2}%)</span><span className="font-mono">{formatINR(documentPreview.sgstAmount ?? 0)}</span></div>}
                     {(documentPreview.igstAmount ?? 0) > 0 && <div className="flex justify-between gap-4 text-slate-600"><span>IGST ({documentPreview.gstRate ?? 0}%)</span><span className="font-mono">{formatINR(documentPreview.igstAmount ?? 0)}</span></div>}
                     <div className="flex justify-between gap-4 text-slate-600"><span>Total GST</span><span className="font-mono">{formatINR(documentPreview.totalTax ?? 0)}</span></div>
+                    {(documentPreview.shippingCharges ?? 0) > 0 && <div className="flex justify-between gap-4 text-slate-600"><span>Shipping / handling</span><span className="font-mono">{formatINR(documentPreview.shippingCharges ?? 0)}</span></div>}
+                    {(documentPreview.adjustment ?? 0) !== 0 && <div className="flex justify-between gap-4 text-slate-600"><span>Adjustment</span><span className="font-mono">{formatINR(documentPreview.adjustment ?? 0)}</span></div>}
                   </>
                 ) : (
                   <div className="flex justify-between gap-4 text-slate-600">

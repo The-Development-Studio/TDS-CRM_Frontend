@@ -112,7 +112,13 @@ export const prepareStaffData = async (staffUser: StaffUser) => {
 
   const organization = await request<{ data: Record<string, unknown> | null }>("/api/staff-data/organization");
   if (organization.data) {
-    const { id: _id, ...profile } = organization.data;
+    const {
+      id: _id,
+      organizationKey: _organizationKey,
+      createdAt: _createdAt,
+      updatedAt: _updatedAt,
+      ...profile
+    } = organization.data;
     localStorage.setItem("tds-crm:v2:organization-profile", JSON.stringify(profile));
   }
 };

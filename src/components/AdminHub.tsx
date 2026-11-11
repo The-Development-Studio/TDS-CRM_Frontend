@@ -17,7 +17,7 @@ const roleModules = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'leads', label: 'Leads' },
   { id: 'customers', label: 'Companies / Customers' },
-  { id: 'activities', label: 'Activities' },
+  { id: 'activities', label: 'My Activity' },
   { id: 'pipeline', label: 'Sales Pipeline' },
   { id: 'commercial', label: 'Quotations & Invoices' },
   { id: 'support', label: 'Support & Renewals' },

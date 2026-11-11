@@ -24,6 +24,7 @@ interface RecordEditorModalProps {
   values: RecordEditorValues;
   onSave: (values: RecordEditorValues) => void;
   onClose: () => void;
+  wide?: boolean;
   onFieldChange?: (
     key: string,
     value: string | number,
@@ -37,6 +38,7 @@ export const RecordEditorModal: React.FC<RecordEditorModalProps> = ({
   values,
   onSave,
   onClose,
+  wide = false,
   onFieldChange
 }) => {
   const [draft, setDraft] = useState(values);
@@ -70,7 +72,7 @@ export const RecordEditorModal: React.FC<RecordEditorModalProps> = ({
         role="dialog"
         aria-modal="true"
         aria-labelledby="record-editor-title"
-        className="relative z-10 max-h-[calc(100dvh-1.5rem)] w-full max-w-2xl overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-2xl sm:max-h-[calc(100dvh-3rem)]"
+        className={`relative z-10 max-h-[calc(100dvh-1.5rem)] w-full overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-2xl sm:max-h-[calc(100dvh-3rem)] ${wide ? 'max-w-5xl' : 'max-w-2xl'}`}
       >
         <header className="sticky top-0 flex items-center justify-between border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur sm:px-6">
           <h2 id="record-editor-title" className="text-sm font-bold text-slate-900">{title}</h2>

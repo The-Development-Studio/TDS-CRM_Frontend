@@ -53,9 +53,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
       items: [
         { id: 'leads', label: 'Leads', icon: Users },
         { id: 'customers', label: 'Companies / Customers', icon: Building2 },
-        { id: 'activities', label: 'Activities', icon: CalendarCheck },
+        { id: 'activities', label: 'My Activity', icon: CalendarCheck },
         { id: 'pipeline', label: 'Sales Pipeline', icon: GitBranch },
-        { id: 'reports', label: 'My Activity & Reports', icon: BarChart3 }
+        { id: 'reports', label: 'Reports', icon: BarChart3 }
       ]
     },
     {
