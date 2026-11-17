@@ -64,6 +64,17 @@ type EditableRecord =
   | { type: 'invoice'; record: Invoice }
   | { type: 'amc'; record: AMCRenewal };
 
+const createTaxInvoiceNumber = (invoices: Invoice[], issueDate: string) => {
+  const period = issueDate.slice(0, 7).replace('-', '/');
+  const prefix = `INV-${period}-`;
+  const highestSequence = invoices.reduce((highest, invoice) => {
+    if (invoice.type !== 'Tax Invoice' || !invoice.invoiceNo.startsWith(prefix)) return highest;
+    const sequence = invoice.invoiceNo.slice(prefix.length);
+    return /^\d+$/.test(sequence) ? Math.max(highest, Number(sequence)) : highest;
+  }, -1);
+  return `${prefix}${String(highestSequence + 1).padStart(3, '0')}`;
+};
+
 const getEditorConfig = (
   item: EditableRecord,
   assignees: StaffAssignee[] = [],
@@ -749,12 +760,15 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
     const lead = leads.find((item) => item.id === proposal.leadId);
     const customer = customers.find((item) => item.companyName.toLowerCase() === (lead?.company ?? '').toLowerCase());
     const prefix = type === 'Proforma' ? 'PI' : 'INV';
+    const issueDate = new Date().toISOString().split('T')[0];
     const taxableAmount = proposal.amount;
     const supplyType: Invoice['supplyType'] = customer?.state && organization.state && customer.state.toLowerCase() !== organization.state.toLowerCase() ? 'Inter-state' : 'Intra-state';
     const gst = calculateGst({ taxableAmount, gstRate: 18, supplyType });
     const invoice: Invoice = {
       id: `inv-${Date.now()}`,
-      invoiceNo: `${prefix}-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`,
+      invoiceNo: type === 'Tax Invoice'
+        ? createTaxInvoiceNumber(invoices, issueDate)
+        : `${prefix}-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`,
       customer: lead?.company ?? '',
       type,
       taxableAmount,
@@ -786,7 +800,7 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
       amount: gst.grandTotal,
       paidAmount: 0,
       status: 'Draft',
-      issueDate: new Date().toISOString().split('T')[0],
+      issueDate,
       dueDate: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0]
     };
     setEditingRecord({ type: 'invoice', record: invoice });
@@ -794,14 +808,15 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
   };
 
   const handleConvertProformaToTaxInvoice = (source: Invoice) => {
+    const issueDate = new Date().toISOString().split('T')[0];
     const invoice: Invoice = {
       ...source,
       id: `inv-${Date.now()}`,
-      invoiceNo: `INV-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`,
+      invoiceNo: createTaxInvoiceNumber(invoices, issueDate),
       type: 'Tax Invoice',
       paidAmount: 0,
       status: 'Draft',
-      issueDate: new Date().toISOString().split('T')[0]
+      issueDate
     };
     setEditingRecord({ type: 'invoice', record: invoice });
     setCurrentView('invoices');
@@ -1065,16 +1080,19 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
   const handleCreateInvoice = (invoiceType: Invoice['type'] = 'Tax Invoice', selectedCustomer?: Customer) => {
     const customer = selectedCustomer;
     const prefix = invoiceType === 'Proforma' ? 'PI' : 'INV';
+    const issueDate = new Date().toISOString().split('T')[0];
     const newInv: Invoice = {
       id: `inv-${Date.now()}`,
-      invoiceNo: `${prefix}-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`,
+      invoiceNo: invoiceType === 'Tax Invoice'
+        ? createTaxInvoiceNumber(invoices, issueDate)
+        : `${prefix}-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`,
       customer: customer?.companyName ?? '',
       type: invoiceType,
       amount: 0,
       paidAmount: 0,
       status: 'Draft',
       dueDate: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
-      issueDate: new Date().toISOString().split('T')[0],
+      issueDate,
       description: '',
       sacCode: '9983',
       taxableAmount: 0,

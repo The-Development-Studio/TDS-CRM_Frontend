@@ -78,7 +78,7 @@ const initialTaxRules: AdminRecord[] = [
 const initialSequences: AdminRecord[] = [
   { id: 'lead-default', document: 'Lead', format: 'LD-{YYYY}-{SEQ}', nextNumber: 1, status: 'Active' },
   { id: 'quotation-default', document: 'Quotation', format: 'QTN-{YYYY}-{SEQ}', nextNumber: 1, status: 'Active' },
-  { id: 'invoice-default', document: 'Tax Invoice', format: 'INV-{YYYY}-{SEQ}', nextNumber: 1, status: 'Active' }
+  { id: 'invoice-default', document: 'Tax Invoice', format: 'INV-{YYYY}/{MM}-{SEQ}', nextNumber: 0, status: 'Active' }
 ];
 
 const initialApprovalRules: AdminRecord[] = [
@@ -458,7 +458,7 @@ export const AdminHub: React.FC<{ onInviteStaff: () => void }> = ({ onInviteStaf
   const sequenceFields: RecordEditorField[] = [
     { key: 'document', label: 'Document type', required: true },
     { key: 'format', label: 'Number format', required: true },
-    { key: 'nextNumber', label: 'Next sequence number', type: 'number', min: 1, step: 1, required: true },
+    { key: 'nextNumber', label: 'Next sequence number', type: 'number', min: 0, step: 1, required: true },
     statusField
   ];
   const approvalFields: RecordEditorField[] = [

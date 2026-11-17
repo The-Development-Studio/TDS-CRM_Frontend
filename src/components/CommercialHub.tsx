@@ -655,7 +655,9 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
             <div className="print-hidden sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur">
               <div className="flex items-center gap-2">
                 <p className="text-sm font-bold text-slate-900">Document Preview</p>
-                <span className="rounded bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600">A4 Portrait</span>
+                <span className="rounded bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600">
+                  {documentPreview.kind === 'TAX INVOICE' ? 'A4 Compact' : 'A4 Portrait'}
+                </span>
               </div>
               <div className="flex items-center gap-2">
                 <button
@@ -676,7 +678,7 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
               </div>
             </div>
 
-            <article className="print-document m-4 min-h-[297mm] w-[calc(100%-2rem)] max-w-[210mm] border border-slate-200 p-5 text-slate-900 sm:m-8 sm:p-8">
+            <article className={`print-document m-4 min-h-[297mm] w-[calc(100%-2rem)] max-w-[210mm] border border-slate-200 p-5 text-slate-900 sm:m-8 sm:p-8 ${documentPreview.kind === 'TAX INVOICE' ? 'tax-invoice-compact' : ''}`}>
               <header className="flex flex-wrap items-start justify-between gap-5 border-b-2 border-[#ff6600] pb-5">
                 <div className="flex items-center gap-3">
                   <img src={appLogo} alt="TDS" className="h-12 w-12 object-contain" />
@@ -777,29 +779,21 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
                 </div>
               )}
 
-              {(documentPreview.kind === 'PROFORMA INVOICE' || documentPreview.kind === 'TAX INVOICE') && (
-                <section className="mt-6 rounded-lg border border-slate-200 p-4">
-                  <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Payment instructions</h3>
-                  {bankingDetails.length > 0 ? (
-                    <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-2 text-xs sm:grid-cols-2">
-                      {bankingDetails.map(([label, value]) => (
-                        <div key={label} className="flex justify-between gap-3">
-                          <dt className="text-slate-500">{label}</dt>
-                          <dd className="text-right font-semibold text-slate-800">{value}</dd>
-                        </div>
-                      ))}
-                    </dl>
-                  ) : (
-                    <p className="mt-2 text-xs text-slate-500">Bank transfer details have not been configured in Organization Setup.</p>
-                  )}
-                </section>
-              )}
-
               <div className="mt-6 overflow-x-auto">
-                <table className={`w-full text-left text-xs ${documentPreview.kind !== 'QUOTATION' ? 'min-w-[920px]' : 'min-w-[480px]'}`}>
+                <table className={`w-full text-left text-xs ${documentPreview.kind === 'TAX INVOICE' ? 'min-w-0 tax-invoice-items' : documentPreview.kind !== 'QUOTATION' ? 'min-w-[920px]' : 'min-w-[480px]'}`}>
                   <thead>
                     <tr className="border-y border-slate-300 text-[10px] font-bold uppercase tracking-wider text-slate-600">
-                      {documentPreview.kind !== 'QUOTATION' ? (
+                      {documentPreview.kind === 'TAX INVOICE' ? (
+                        <>
+                          <th className="py-3 pr-3">Item description</th>
+                          <th className="py-3 px-2 text-right">HSN / SAC</th>
+                          <th className="py-3 px-2 text-right">Qty</th>
+                          <th className="py-3 px-2 text-right">Rate</th>
+                          <th className="py-3 px-2 text-right">Taxable</th>
+                          <th className="py-3 px-2 text-right">GST</th>
+                          <th className="py-3 pl-2 text-right">Amount</th>
+                        </>
+                      ) : documentPreview.kind !== 'QUOTATION' ? (
                         <>
                           <th className="py-3 pr-3">Description</th>
                           <th className="py-3 px-3 text-right">HSN / SAC</th>
@@ -826,7 +820,17 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
                       const lineTax = documentPreview.kind !== 'QUOTATION' ? lineAmount * ((documentPreview.gstRate ?? 0) / 100) : 0;
                       return <tr key={item.id} className="border-b border-slate-200">
                         <td className="py-4 pr-3 font-semibold">{item.description}</td>
-                        {documentPreview.kind !== 'QUOTATION' ? <>
+                        {documentPreview.kind === 'TAX INVOICE' ? <>
+                          <td className="py-4 px-2 text-right">{item.hsnSac || documentPreview.sacCode || '—'}</td>
+                          <td className="py-4 px-2 text-right">{item.quantity}</td>
+                          <td className="py-4 px-2 text-right font-mono">{formatINR(item.rate)}</td>
+                          <td className="py-4 px-2 text-right font-mono">{formatINR(lineAmount)}</td>
+                          <td className="py-4 px-2 text-right">
+                            <span className="block">{documentPreview.gstRate ?? 0}%</span>
+                            <span className="block text-[10px] text-slate-500">{formatINR(lineTax)}</span>
+                          </td>
+                          <td className="py-4 pl-2 text-right font-mono font-bold">{formatINR(lineAmount + lineTax)}</td>
+                        </> : documentPreview.kind !== 'QUOTATION' ? <>
                           <td className="py-4 px-3 text-right">{item.hsnSac || documentPreview.sacCode || '—'}</td>
                           <td className="py-4 px-3 text-right">{item.quantity}</td>
                           <td className="py-4 px-3 text-right font-mono">{formatINR(item.rate)}</td>
@@ -843,7 +847,19 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
                     }) : (
                     <tr className="border-b border-slate-200">
                       <td className="py-4 pr-3 font-semibold">{documentPreview.description}</td>
-                      {documentPreview.kind !== 'QUOTATION' ? (
+                      {documentPreview.kind === 'TAX INVOICE' ? (
+                        <>
+                          <td className="py-4 px-2 text-right">{documentPreview.sacCode || '—'}</td>
+                          <td className="py-4 px-2 text-right">1</td>
+                          <td className="py-4 px-2 text-right font-mono">{formatINR(documentPreview.taxableAmount ?? documentPreview.amount)}</td>
+                          <td className="py-4 px-2 text-right font-mono">{formatINR(Math.max(0, (documentPreview.taxableAmount ?? documentPreview.amount) - (documentPreview.discount ?? 0)))}</td>
+                          <td className="py-4 px-2 text-right">
+                            <span className="block">{documentPreview.gstRate ?? 0}%</span>
+                            <span className="block text-[10px] text-slate-500">{formatINR(documentPreview.totalTax ?? 0)}</span>
+                          </td>
+                          <td className="py-4 pl-2 text-right font-mono font-bold">{formatINR(documentPreview.amount)}</td>
+                        </>
+                      ) : documentPreview.kind !== 'QUOTATION' ? (
                         <>
                           <td className="py-4 px-3 text-right">{documentPreview.sacCode || '—'}</td>
                           <td className="py-4 px-3 text-right">1</td>
@@ -907,6 +923,24 @@ export const CommercialHub: React.FC<CommercialHubProps> = ({
                   </span>
                 </div>
               </div>
+
+              {(documentPreview.kind === 'PROFORMA INVOICE' || documentPreview.kind === 'TAX INVOICE') && (
+                <section className="mt-6 rounded-lg border border-slate-200 p-4">
+                  <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Payment instructions</h3>
+                  {bankingDetails.length > 0 ? (
+                    <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-2 text-xs sm:grid-cols-2">
+                      {bankingDetails.map(([label, value]) => (
+                        <div key={label} className="flex justify-between gap-3">
+                          <dt className="text-slate-500">{label}</dt>
+                          <dd className="text-right font-semibold text-slate-800">{value}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  ) : (
+                    <p className="mt-2 text-xs text-slate-500">Bank transfer details have not been configured in Organization Setup.</p>
+                  )}
+                </section>
+              )}
 
               {documentPreview.kind === 'QUOTATION' && (
                 <section className="mt-8 border-t border-slate-200 pt-4">
