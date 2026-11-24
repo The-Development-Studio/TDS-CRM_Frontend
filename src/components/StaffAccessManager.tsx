@@ -136,7 +136,7 @@ export function StaffAccessManager({ onInviteStaff }: StaffAccessManagerProps) {
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="truncate text-sm font-bold text-white">{user.name}</h3>
                   {user.role === "manager" && <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/15 px-2 py-0.5 text-[10px] font-bold text-orange-300"><ShieldCheck className="h-3 w-3" /> Manager</span>}
-                  {user.role === "admin" && <span className="inline-flex items-center gap-1 rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] font-bold text-violet-300"><ShieldCheck className="h-3 w-3" /> Administrator</span>}
+                  {user.role === "admin" && <span className="inline-flex items-center gap-1 rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] font-bold text-violet-300"><ShieldCheck className="h-3 w-3" /> Tenant Admin</span>}
                   <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${user.active ? "bg-emerald-500/15 text-emerald-300" : "bg-slate-700 text-slate-300"}`}>{user.active ? "Active" : "Inactive"}</span>
                 </div>
                 <p className="truncate text-xs text-slate-400">{user.email}{user.jobTitle ? ` · ${user.jobTitle}` : ""}</p>
@@ -151,7 +151,7 @@ export function StaffAccessManager({ onInviteStaff }: StaffAccessManagerProps) {
           <div className="mt-4 grid grid-cols-1 gap-3 rounded-xl border border-slate-800 bg-slate-950/40 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto] sm:items-end">
             <label className="text-xs font-semibold text-slate-300">Role
               <select disabled={user.role === "admin"} value={selectedRole} onChange={(event) => setRoleDrafts((current) => ({ ...current, [user.id]: event.target.value as StaffUser["role"] }))} className="mt-1.5 h-9 w-full rounded-lg border border-slate-700 bg-slate-900 px-2 text-xs text-white disabled:opacity-60">
-                {user.role === "admin" && <option value="admin">Administrator</option>}
+                {user.role === "admin" && <option value="admin">Tenant Admin</option>}
                 <option value="manager">Manager</option>
                 <option value="user">User</option>
               </select>

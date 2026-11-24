@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { Building2, Check, ChevronRight, ExternalLink, MonitorCog, Palette, Plus, Save, Trash2, X } from "lucide-react";
+import { Building2, Check, ChevronRight, ExternalLink, ImagePlus, MonitorCog, Palette, Plus, Save, Trash2, X } from "lucide-react";
 import type { Tenant, TenantTheme } from "../data/tenants";
 
 const themePresets = [
@@ -88,6 +88,27 @@ export const TenantManagement: React.FC<TenantManagementProps> = ({
 
   const createTenant = () => {
     if (saveDraft()) setCreating(false);
+  };
+
+  const selectLogo = (file?: File) => {
+    if (!file) return;
+    if (!['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'].includes(file.type)) {
+      setError('Use a PNG, JPG, WebP, or SVG logo.');
+      return;
+    }
+    if (file.size > 500 * 1024) {
+      setError('Logo must be smaller than 500 KB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setDraft((current) => ({ ...current, logoDataUrl: reader.result as string }));
+        setError('');
+      }
+    };
+    reader.onerror = () => setError('Could not read the selected logo.');
+    reader.readAsDataURL(file);
   };
 
   return (
@@ -179,6 +200,30 @@ export const TenantManagement: React.FC<TenantManagementProps> = ({
               <ExternalLink className="h-4 w-4 shrink-0 text-[var(--color-primary)]" />
             </a>
           )}
+
+          <div className="border-t border-slate-200 pt-5">
+            <div className="flex items-center gap-2">
+              <ImagePlus className="h-4 w-4 text-[var(--color-primary)]" />
+              <h3 className="text-sm font-bold text-slate-900">Tenant logo</h3>
+            </div>
+            <p className="mt-1 text-xs text-slate-500">Displayed in this tenant's navigation. PNG, JPG, WebP, or SVG up to 500 KB.</p>
+            <div className="mt-4 flex flex-wrap items-center gap-4">
+              <span className="grid h-20 w-20 place-items-center overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+                {draft.logoDataUrl
+                  ? <img src={draft.logoDataUrl} alt={`${draft.name || 'Tenant'} logo preview`} className="h-full w-full object-contain p-2" />
+                  : <Building2 className="h-8 w-8 text-slate-400" />}
+              </span>
+              <div className="flex flex-wrap gap-2">
+                <label className="cursor-pointer rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">
+                  Upload logo
+                  <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onChange={(event) => selectLogo(event.target.files?.[0])} className="sr-only" />
+                </label>
+                {draft.logoDataUrl && (
+                  <button type="button" onClick={() => setDraft((current) => ({ ...current, logoDataUrl: '' }))} className="rounded-lg px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50">Remove</button>
+                )}
+              </div>
+            </div>
+          </div>
 
           <div className="border-t border-slate-200 pt-5">
             <div className="flex items-center gap-2">

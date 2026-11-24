@@ -69,6 +69,7 @@ export function StaffInviteModal({ onClose }: StaffInviteModalProps) {
               <select value={role} onChange={(event) => setRole(event.target.value as StaffUser["role"])} className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 bg-white px-3">
                 <option value="user">User</option>
                 <option value="manager">Manager</option>
+                <option value="admin">Tenant Admin</option>
               </select>
             </label>
             {role === "user" && <label className="block text-sm font-medium text-slate-700">Reporting manager

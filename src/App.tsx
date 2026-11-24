@@ -385,11 +385,17 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
       .then(async (response) => {
         const result = await response.json().catch(() => ({})) as { data?: Tenant[]; error?: string };
         if (!response.ok || !result.data) throw new Error(result.error || `Could not load tenants (${response.status})`);
-        if (result.data.length) setTenants(result.data);
+        if (result.data.length) {
+          setTenants(result.data);
+          const currentTenant = result.data.find((tenant) => tenant.id === activeTenantId);
+          if (currentTenant && !window.location.pathname.startsWith('/t/')) {
+            window.history.replaceState({}, '', `/t/${currentTenant.slug}${window.location.search}`);
+          }
+        }
         setTenantsLoaded(true);
       })
       .catch((reason: unknown) => setSyncError(reason instanceof Error ? reason.message : 'Could not load tenants.'));
-  }, [setTenants]);
+  }, [activeTenantId, setTenants]);
 
   const handleSaveTenant = async (tenant: Tenant) => {
     const exists = tenants.some((item) => item.id === tenant.id);
@@ -1337,6 +1343,7 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
         mobileOpen={mobileSidebarOpen}
         onCloseMobile={() => setMobileSidebarOpen(false)}
         allowedPages={allowedPages}
+        logoSrc={activeTenant.logoDataUrl}
       />
       {mobileSidebarOpen && (
         <button

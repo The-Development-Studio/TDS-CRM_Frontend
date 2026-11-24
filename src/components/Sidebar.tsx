@@ -30,6 +30,7 @@ interface SidebarProps {
   mobileOpen: boolean;
   onCloseMobile: () => void;
   allowedPages: string[];
+  logoSrc?: string;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -39,7 +40,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onToggleCollapse,
   mobileOpen,
   onCloseMobile,
-  allowedPages
+  allowedPages,
+  logoSrc
 }) => {
   const menuSections = [
     {
@@ -110,7 +112,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             }}
             aria-label="Go to dashboard"
           >
-            <img src={appLogo} alt="TDS" className="h-9 w-9 shrink-0 object-contain" />
+            <img src={logoSrc || appLogo} alt="Organization logo" className="h-9 w-9 shrink-0 rounded-lg object-contain" />
             <div>
               <div className="flex items-center gap-1.5">
                 <span className="whitespace-nowrap text-sm font-extrabold tracking-tight text-slate-900">TDS-OS</span>
@@ -131,7 +133,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             }}
             aria-label="Go to dashboard"
           >
-            <img src={appLogo} alt="TDS" className="h-9 w-9 object-contain" />
+            <img src={logoSrc || appLogo} alt="Organization logo" className="h-9 w-9 rounded-lg object-contain" />
           </button>
         )}
 

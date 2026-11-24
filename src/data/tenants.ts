@@ -9,6 +9,7 @@ export type Tenant = {
   name: string;
   slug: string;
   status: "Active" | "Suspended";
+  logoDataUrl?: string;
   theme: TenantTheme;
 };
 
@@ -35,6 +36,7 @@ export const isTenantArray = (value: unknown): value is Tenant[] =>
       typeof tenant.name === "string" &&
       typeof tenant.slug === "string" &&
       (tenant.status === "Active" || tenant.status === "Suspended") &&
+      (tenant.logoDataUrl === undefined || typeof tenant.logoDataUrl === "string") &&
       Boolean(tenant.theme) &&
       typeof tenant.theme?.primaryColor === "string" &&
       (tenant.theme?.sidebarTone === "light" || tenant.theme?.sidebarTone === "dark") &&
