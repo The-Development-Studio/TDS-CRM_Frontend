@@ -443,22 +443,22 @@ export const AdminHub: React.FC<AdminHubProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState('tenants');
   const [services, setServices] = usePersistentState<AdminRecord[]>(
-    'tds-crm:v2:admin-services',
+    `tds-crm:v2:${activeTenantId}:admin-services`,
     [],
     isArrayOf<AdminRecord>
   );
   const [taxRules, setTaxRules] = usePersistentState<AdminRecord[]>(
-    'tds-crm:v2:admin-tax-rules',
+    `tds-crm:v2:${activeTenantId}:admin-tax-rules`,
     initialTaxRules,
     isArrayOf<AdminRecord>
   );
   const [sequences, setSequences] = usePersistentState<AdminRecord[]>(
-    'tds-crm:v2:admin-numbering-sequences',
+    `tds-crm:v2:${activeTenantId}:admin-numbering-sequences`,
     initialSequences,
     isArrayOf<AdminRecord>
   );
   const [approvalRules, setApprovalRules] = usePersistentState<AdminRecord[]>(
-    'tds-crm:v2:admin-approval-rules',
+    `tds-crm:v2:${activeTenantId}:admin-approval-rules`,
     initialApprovalRules,
     isArrayOf<AdminRecord>
   );

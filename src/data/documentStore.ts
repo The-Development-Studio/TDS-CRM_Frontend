@@ -9,8 +9,12 @@ export interface StoredDocument {
   file: Blob;
 }
 
-const databaseName = 'tds-crm-documents';
 const storeName = 'files';
+
+const databaseName = () => {
+  const tenantId = localStorage.getItem('tds-crm:v2:active-tenant') || 'default';
+  return tenantId === 'default' ? 'tds-crm-documents' : `tds-crm-documents-${tenantId}`;
+};
 
 const openDatabase = () => new Promise<IDBDatabase>((resolve, reject) => {
   if (!('indexedDB' in window)) {
@@ -18,7 +22,7 @@ const openDatabase = () => new Promise<IDBDatabase>((resolve, reject) => {
     return;
   }
 
-  const request = indexedDB.open(databaseName, 1);
+  const request = indexedDB.open(databaseName(), 1);
   request.onupgradeneeded = () => {
     if (!request.result.objectStoreNames.contains(storeName)) {
       request.result.createObjectStore(storeName, { keyPath: 'id' });

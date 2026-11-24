@@ -2,16 +2,22 @@ import { listStoredDocuments } from "./documentStore";
 import { listSharedDocuments, uploadSharedDocument } from "./sharedDocuments";
 import type { StaffUser } from "../components/StaffLogin";
 
-const collectionStorage = {
-  leads: "tds-crm:v2:leads",
-  customers: "tds-crm:v2:customers",
-  activities: "tds-crm:v2:activities",
-  opportunities: "tds-crm:v2:opportunities",
-  proposals: "tds-crm:v2:proposals",
-  invoices: "tds-crm:v2:invoices",
-  payments: "tds-crm:v2:payments",
-  contracts: "tds-crm:v2:amc-renewals"
+const collectionSuffixes = {
+  leads: "leads",
+  customers: "customers",
+  activities: "activities",
+  opportunities: "opportunities",
+  proposals: "proposals",
+  invoices: "invoices",
+  payments: "payments",
+  contracts: "amc-renewals"
 } as const;
+
+type StoredResource = keyof typeof collectionSuffixes;
+const tenantStorageKey = (tenantId: string, resource: StoredResource) =>
+  `tds-crm:v2:${tenantId}:${collectionSuffixes[resource]}`;
+const legacyStorageKey = (resource: StoredResource) =>
+  `tds-crm:v2:${collectionSuffixes[resource]}`;
 
 const readLocalCollection = (key: string): Record<string, unknown>[] => {
   try {
@@ -33,7 +39,7 @@ const request = async <T,>(url: string, init?: RequestInit): Promise<T> => {
   return result;
 };
 
-const resourcePages: Record<keyof typeof collectionStorage, string[]> = {
+const resourcePages: Record<StoredResource, string[]> = {
   leads: ["leads", "portal", "reports"],
   customers: ["customers", "portal", "costing"],
   activities: ["activities", "reports"],
@@ -45,12 +51,15 @@ const resourcePages: Record<keyof typeof collectionStorage, string[]> = {
 };
 
 export const prepareStaffData = async (staffUser: StaffUser) => {
-  const importedKey = "tds-crm:v2:shared-imported";
-  const importedDocumentsKey = "tds-crm:v2:shared-documents-imported";
+  const tenantId = staffUser.tenantId || "default";
+  localStorage.setItem("tds-crm:v2:active-tenant", tenantId);
+  const importedKey = `tds-crm:v2:${tenantId}:shared-imported`;
+  const importedDocumentsKey = `tds-crm:v2:${tenantId}:shared-documents-imported`;
   const hasPage = (page: string) => staffUser.role === "admin" || staffUser.pageAccess.includes(page);
   if (staffUser.role === "admin" && localStorage.getItem(importedKey) !== "true") {
-    for (const [resource, storageKey] of Object.entries(collectionStorage)) {
-      const records = readLocalCollection(storageKey);
+    for (const resource of Object.keys(collectionSuffixes) as StoredResource[]) {
+      const records = readLocalCollection(tenantStorageKey(tenantId, resource))
+        .concat(tenantId === "default" ? readLocalCollection(legacyStorageKey(resource)) : []);
       for (let index = 0; index < records.length; index += 25) {
         await request("/api/staff-data/import-local", {
           method: "POST",
@@ -60,7 +69,8 @@ export const prepareStaffData = async (staffUser: StaffUser) => {
       }
     }
 
-    const localOrganization = localStorage.getItem("tds-crm:v2:organization-profile");
+    const localOrganization = localStorage.getItem(`tds-crm:v2:organization-profile:${tenantId}`)
+      ?? (tenantId === "default" ? localStorage.getItem("tds-crm:v2:organization-profile") : null);
     const existing = await request<{ data: Record<string, unknown> | null }>("/api/staff-data/organization");
     if (!existing.data && localOrganization) {
       await request("/api/staff-data/organization", {
@@ -97,16 +107,16 @@ export const prepareStaffData = async (staffUser: StaffUser) => {
     localStorage.setItem(importedDocumentsKey, "true");
   }
 
-  const allResources = Object.keys(collectionStorage) as (keyof typeof collectionStorage)[];
+  const allResources = Object.keys(collectionSuffixes) as StoredResource[];
   const resources = allResources.filter((resource) => resourcePages[resource].some(hasPage));
   allResources.filter((resource) => !resources.includes(resource)).forEach((resource) => {
-    localStorage.removeItem(collectionStorage[resource]);
+    localStorage.removeItem(tenantStorageKey(tenantId, resource));
   });
   const remote = await Promise.all(resources.map((resource) =>
     request<{ data: Record<string, unknown>[] }>(`/api/${resource}?limit=10000`)
   ));
   remote.forEach(({ data }, index) => {
-    const storageKey = collectionStorage[resources[index]];
+    const storageKey = tenantStorageKey(tenantId, resources[index]);
     localStorage.setItem(storageKey, JSON.stringify(data));
   });
 
@@ -119,6 +129,6 @@ export const prepareStaffData = async (staffUser: StaffUser) => {
       updatedAt: _updatedAt,
       ...profile
     } = organization.data;
-    localStorage.setItem("tds-crm:v2:organization-profile", JSON.stringify(profile));
+    localStorage.setItem(`tds-crm:v2:organization-profile:${tenantId}`, JSON.stringify(profile));
   }
 };

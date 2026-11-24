@@ -31,10 +31,15 @@ export const DEFAULT_ORGANIZATION_PROFILE: OrganizationProfile = {
   upiId: ''
 };
 
-export const loadOrganizationProfile = (): OrganizationProfile => {
+export const organizationProfileStorageKey = (tenantId = 'default') =>
+  `${ORGANIZATION_PROFILE_STORAGE_KEY}:${tenantId}`;
+
+export const loadOrganizationProfile = (tenantId = 'default'): OrganizationProfile => {
   try {
     localStorage.removeItem(LEGACY_ORGANIZATION_PROFILE_STORAGE_KEY);
-    const storedProfile = localStorage.getItem(ORGANIZATION_PROFILE_STORAGE_KEY);
+    const tenantKey = organizationProfileStorageKey(tenantId);
+    const storedProfile = localStorage.getItem(tenantKey)
+      ?? (tenantId === 'default' ? localStorage.getItem(ORGANIZATION_PROFILE_STORAGE_KEY) : null);
     if (!storedProfile) return DEFAULT_ORGANIZATION_PROFILE;
 
     const parsedProfile: unknown = JSON.parse(storedProfile);
@@ -62,9 +67,9 @@ export const loadOrganizationProfile = (): OrganizationProfile => {
   }
 };
 
-export const saveOrganizationProfile = (profile: OrganizationProfile) => {
+export const saveOrganizationProfile = (profile: OrganizationProfile, tenantId = 'default') => {
   try {
-    localStorage.setItem(ORGANIZATION_PROFILE_STORAGE_KEY, JSON.stringify(profile));
+    localStorage.setItem(organizationProfileStorageKey(tenantId), JSON.stringify(profile));
   } catch {
     // Keep the current session usable when browser storage is unavailable.
   }

@@ -338,15 +338,16 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
   const activeTenant = tenants.find((tenant) => tenant.id === activeTenantId) ?? tenants[0] ?? DEFAULT_TENANT;
 
   // Core state collections
-  const [leads, setLeads] = usePersistentState<Lead[]>('tds-crm:v2:leads', [], isArrayOf<Lead>);
-  const [customers, setCustomers] = usePersistentState<Customer[]>('tds-crm:v2:customers', [], isArrayOf<Customer>);
-  const [activities, setActivities] = usePersistentState<Activity[]>('tds-crm:v2:activities', [], isArrayOf<Activity>);
-  const [opportunities, setOpportunities] = usePersistentState<Opportunity[]>('tds-crm:v2:opportunities', [], isArrayOf<Opportunity>);
-  const [proposals, setProposals] = usePersistentState<Proposal[]>('tds-crm:v2:proposals', [], isArrayOf<Proposal>);
-  const [invoices, setInvoices] = usePersistentState<Invoice[]>('tds-crm:v2:invoices', [], isArrayOf<Invoice>);
-  const [payments, setPayments] = usePersistentState<PaymentRecord[]>('tds-crm:v2:payments', [], isArrayOf<PaymentRecord>);
-  const [amcRenewals, setAmcRenewals] = usePersistentState<AMCRenewal[]>('tds-crm:v2:amc-renewals', [], isArrayOf<AMCRenewal>);
-  const [organization, setOrganization] = useState<OrganizationProfile>(loadOrganizationProfile);
+  const tenantStoragePrefix = `tds-crm:v2:${activeTenantId}`;
+  const [leads, setLeads] = usePersistentState<Lead[]>(`${tenantStoragePrefix}:leads`, [], isArrayOf<Lead>);
+  const [customers, setCustomers] = usePersistentState<Customer[]>(`${tenantStoragePrefix}:customers`, [], isArrayOf<Customer>);
+  const [activities, setActivities] = usePersistentState<Activity[]>(`${tenantStoragePrefix}:activities`, [], isArrayOf<Activity>);
+  const [opportunities, setOpportunities] = usePersistentState<Opportunity[]>(`${tenantStoragePrefix}:opportunities`, [], isArrayOf<Opportunity>);
+  const [proposals, setProposals] = usePersistentState<Proposal[]>(`${tenantStoragePrefix}:proposals`, [], isArrayOf<Proposal>);
+  const [invoices, setInvoices] = usePersistentState<Invoice[]>(`${tenantStoragePrefix}:invoices`, [], isArrayOf<Invoice>);
+  const [payments, setPayments] = usePersistentState<PaymentRecord[]>(`${tenantStoragePrefix}:payments`, [], isArrayOf<PaymentRecord>);
+  const [amcRenewals, setAmcRenewals] = usePersistentState<AMCRenewal[]>(`${tenantStoragePrefix}:amc-renewals`, [], isArrayOf<AMCRenewal>);
+  const [organization, setOrganization] = useState<OrganizationProfile>(() => loadOrganizationProfile(activeTenantId));
   const [syncError, setSyncError] = useState('');
   const [showStaffInvite, setShowStaffInvite] = useState(false);
   const [showMyProfile, setShowMyProfile] = useState(false);
@@ -559,7 +560,7 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
 
   const handleSaveOrganization = (profile: OrganizationProfile) => {
     setOrganization(profile);
-    saveOrganizationProfile(profile);
+    saveOrganizationProfile(profile, activeTenantId);
     syncQueue.current = syncQueue.current
       .then(async () => {
         const response = await fetch('/api/staff-data/organization', {
