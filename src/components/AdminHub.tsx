@@ -4,6 +4,8 @@ import { usePersistentState, isArrayOf } from '../hooks/usePersistentState';
 import { RecordEditorField, RecordEditorModal, RecordEditorValues } from './RecordEditorModal';
 import { formatINR } from '../utils/currency';
 import { StaffAccessManager } from './StaffAccessManager';
+import { TenantManagement } from './TenantManagement';
+import type { Tenant } from '../data/tenants';
 
 type AdminRecord = RecordEditorValues & { id: string };
 type CustomRole = {
@@ -54,6 +56,7 @@ interface AdminTableProps {
 }
 
 const adminTabs = [
+  { id: 'tenants', label: 'Tenants & Theme' },
   { id: 'services', label: 'Service Master' },
   { id: 'users', label: 'Users & Roles' },
   { id: 'commercial', label: 'Tax & Numbering Config' },
@@ -421,8 +424,24 @@ const AdminTable: React.FC<AdminTableProps> = ({
   );
 };
 
-export const AdminHub: React.FC<{ onInviteStaff: () => void }> = ({ onInviteStaff }) => {
-  const [activeTab, setActiveTab] = useState('services');
+interface AdminHubProps {
+  onInviteStaff: () => void;
+  tenants: Tenant[];
+  activeTenantId: string;
+  onActivateTenant: (tenantId: string) => void;
+  onSaveTenant: (tenant: Tenant) => void;
+  onDeleteTenant: (tenantId: string) => void;
+}
+
+export const AdminHub: React.FC<AdminHubProps> = ({
+  onInviteStaff,
+  tenants,
+  activeTenantId,
+  onActivateTenant,
+  onSaveTenant,
+  onDeleteTenant
+}) => {
+  const [activeTab, setActiveTab] = useState('tenants');
   const [services, setServices] = usePersistentState<AdminRecord[]>(
     'tds-crm:v2:admin-services',
     [],
@@ -478,7 +497,7 @@ export const AdminHub: React.FC<{ onInviteStaff: () => void }> = ({ onInviteStaf
           </span>
         </div>
         <p className="mt-1 text-xs text-slate-400">
-          Manage service rates, staff login accounts, page access, tax rules, numbering sequences, and approval thresholds.
+          Manage tenants, workspace themes, service rates, staff access, tax rules, numbering, and approvals.
         </p>
       </header>
 
@@ -499,6 +518,16 @@ export const AdminHub: React.FC<{ onInviteStaff: () => void }> = ({ onInviteStaf
           </button>
         ))}
       </nav>
+
+      {activeTab === 'tenants' && (
+        <TenantManagement
+          tenants={tenants}
+          activeTenantId={activeTenantId}
+          onActivate={onActivateTenant}
+          onSave={onSaveTenant}
+          onDelete={onDeleteTenant}
+        />
+      )}
 
       {activeTab === 'services' && (
         <AdminTable

@@ -14,6 +14,8 @@ export interface StaffUser {
   active: boolean;
   profileCompleted: boolean;
   pageAccess: string[];
+  tenantId: string;
+  tenantIds: string[];
 }
 
 interface StaffLoginProps {

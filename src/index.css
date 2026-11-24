@@ -136,6 +136,54 @@ button[class*="bg-gradient-to-r"]:hover {
   color: #0f172a;
 }
 
+/* Per-tenant brand tokens. These overrides also cover older hard-coded brand
+   utilities while the screens are progressively moved to CSS variables. */
+:is([class~="bg-[#ff6600]"], [class~="bg-[#ff5c00]"]) {
+  background-color: var(--color-primary) !important;
+}
+
+:is([class~="hover:bg-[#e65c00]"], [class~="hover:bg-[#e65300]"]):hover {
+  background-color: var(--color-primary-hover) !important;
+}
+
+:is([class~="text-[#ff6600]"], [class~="text-[#ff5c00]"]) {
+  color: var(--color-primary) !important;
+}
+
+:is([class~="border-[#ff6600]"], [class~="border-[#ff5c00]"]) {
+  border-color: var(--color-primary) !important;
+}
+
+:root[data-sidebar-tone="dark"] .brand-sidebar {
+  border-color: #1e293b !important;
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+:root[data-sidebar-tone="dark"] .brand-sidebar :is(.text-slate-900, .text-slate-700, .text-slate-600) {
+  color: #e2e8f0 !important;
+}
+
+:root[data-sidebar-tone="dark"] .brand-sidebar :is(.text-slate-500, .text-slate-400) {
+  color: #94a3b8 !important;
+}
+
+:root[data-sidebar-tone="dark"] .brand-sidebar :is(.border-slate-200, .border-slate-100) {
+  border-color: #1e293b !important;
+}
+
+:root[data-sidebar-tone="dark"] .brand-sidebar button:not(.brand-sidebar-active):hover {
+  background-color: #1e293b !important;
+}
+
+:root[data-density="compact"] main {
+  --density-scale: .88;
+}
+
+:root[data-density="compact"] main :is(.p-6, .p-5, .p-4) {
+  padding: calc(1rem * var(--density-scale));
+}
+
 .brand-sidebar-active {
   background: var(--color-primary);
   color: #ffffff !important;

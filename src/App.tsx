@@ -26,6 +26,15 @@ import { isArrayOf, usePersistentState } from './hooks/usePersistentState';
 import { prepareStaffData } from './data/staffData';
 import { allPageAccessIds, pageForView } from './data/pageAccess';
 import { calculateGst, isValidGstin } from './utils/gst';
+import {
+  ACTIVE_TENANT_STORAGE_KEY,
+  colorWithAlpha,
+  darkenColor,
+  DEFAULT_TENANT,
+  isTenantArray,
+  TENANTS_STORAGE_KEY,
+  type Tenant
+} from './data/tenants';
 
 const Dashboard = lazy(() => import('./components/Dashboard').then(({ Dashboard }) => ({ default: Dashboard })));
 const ActivitiesHub = lazy(() => import('./components/ActivitiesHub').then(({ ActivitiesHub }) => ({ default: ActivitiesHub })));
@@ -54,6 +63,23 @@ const ViewFallback = () => (
     Loading view…
   </div>
 );
+
+const selectTenantFromUrl = async (user: StaffUser): Promise<StaffUser> => {
+  const match = window.location.pathname.match(/^\/t\/([a-z0-9-]+)\/?$/i);
+  if (!match) return user;
+  const response = await fetch('/api/tenants', { credentials: 'include' });
+  const result = await response.json().catch(() => ({})) as { data?: Tenant[]; error?: string };
+  if (!response.ok || !result.data) throw new Error(result.error || 'Could not resolve this workspace.');
+  const tenant = result.data.find((item) => item.slug.toLowerCase() === match[1].toLowerCase());
+  if (!tenant) throw new Error('This workspace does not exist or you do not have access to it.');
+  if (tenant.id === user.tenantId) return user;
+  const activate = await fetch(`/api/tenants/${tenant.id}/activate`, { method: 'POST', credentials: 'include' });
+  if (!activate.ok) {
+    const activationResult = await activate.json().catch(() => ({})) as { error?: string };
+    throw new Error(activationResult.error || 'Could not open this workspace.');
+  }
+  return { ...user, tenantId: tenant.id };
+};
 
 type EditableRecord =
   | { type: 'lead'; record: Lead }
@@ -306,6 +332,10 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const mainContentRef = useRef<HTMLElement | null>(null);
+  const [tenants, setTenants] = usePersistentState<Tenant[]>(TENANTS_STORAGE_KEY, [DEFAULT_TENANT], isTenantArray);
+  const [activeTenantId, setActiveTenantId] = useState(() => staffUser.tenantId || localStorage.getItem(ACTIVE_TENANT_STORAGE_KEY) || DEFAULT_TENANT.id);
+  const [tenantsLoaded, setTenantsLoaded] = useState(false);
+  const activeTenant = tenants.find((tenant) => tenant.id === activeTenantId) ?? tenants[0] ?? DEFAULT_TENANT;
 
   // Core state collections
   const [leads, setLeads] = usePersistentState<Lead[]>('tds-crm:v2:leads', [], isArrayOf<Lead>);
@@ -337,6 +367,79 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
     ['leads', 'customers', 'activities', 'opportunities', 'proposals', 'invoices', 'payments', 'amc-renewals']
       .forEach((key) => localStorage.removeItem(`tds-crm:v1:${key}`));
   }, []);
+
+  useEffect(() => {
+    if (tenantsLoaded && activeTenant.id !== activeTenantId) setActiveTenantId(activeTenant.id);
+    localStorage.setItem(ACTIVE_TENANT_STORAGE_KEY, activeTenant.id);
+    const root = document.documentElement;
+    root.style.setProperty('--color-primary', activeTenant.theme.primaryColor);
+    root.style.setProperty('--color-primary-hover', darkenColor(activeTenant.theme.primaryColor));
+    root.style.setProperty('--color-primary-soft', colorWithAlpha(activeTenant.theme.primaryColor, '14'));
+    root.dataset.sidebarTone = activeTenant.theme.sidebarTone;
+    root.dataset.density = activeTenant.theme.density;
+  }, [activeTenant, activeTenantId, tenantsLoaded]);
+
+  useEffect(() => {
+    fetch('/api/tenants', { credentials: 'include' })
+      .then(async (response) => {
+        const result = await response.json().catch(() => ({})) as { data?: Tenant[]; error?: string };
+        if (!response.ok || !result.data) throw new Error(result.error || `Could not load tenants (${response.status})`);
+        if (result.data.length) setTenants(result.data);
+        setTenantsLoaded(true);
+      })
+      .catch((reason: unknown) => setSyncError(reason instanceof Error ? reason.message : 'Could not load tenants.'));
+  }, [setTenants]);
+
+  const handleSaveTenant = async (tenant: Tenant) => {
+    const exists = tenants.some((item) => item.id === tenant.id);
+    try {
+      const response = await fetch(exists ? `/api/tenants/${tenant.id}` : '/api/tenants', {
+        method: exists ? 'PUT' : 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(tenant)
+      });
+      const result = await response.json().catch(() => ({})) as { data?: Tenant; error?: string };
+      if (!response.ok || !result.data) throw new Error(result.error || `Could not save tenant (${response.status})`);
+      const saved = result.data;
+      setTenants((current) => current.some((item) => item.id === saved.id)
+        ? current.map((item) => item.id === saved.id ? saved : item)
+        : [...current, saved]);
+      setSyncError('');
+    } catch (reason) {
+      setSyncError(reason instanceof Error ? reason.message : 'Could not save tenant.');
+    }
+  };
+
+  const handleDeleteTenant = async (tenantId: string) => {
+    const tenant = tenants.find((item) => item.id === tenantId);
+    if (!tenant || tenant.id === activeTenantId) return;
+    if (window.confirm(`Delete ${tenant.name}? This removes its saved tenant configuration.`)) {
+      try {
+        const response = await fetch(`/api/tenants/${tenantId}`, { method: 'DELETE', credentials: 'include' });
+        if (!response.ok) {
+          const result = await response.json().catch(() => ({})) as { error?: string };
+          throw new Error(result.error || `Could not suspend tenant (${response.status})`);
+        }
+        setTenants((current) => current.filter((item) => item.id !== tenantId));
+      } catch (reason) {
+        setSyncError(reason instanceof Error ? reason.message : 'Could not suspend tenant.');
+      }
+    }
+  };
+
+  const handleActivateTenant = async (tenantId: string) => {
+    const tenant = tenants.find((item) => item.id === tenantId);
+    if (!tenant || tenant.id === activeTenant.id) return;
+    try {
+      const response = await fetch(`/api/tenants/${tenantId}/activate`, { method: 'POST', credentials: 'include' });
+      const result = await response.json().catch(() => ({})) as { error?: string };
+      if (!response.ok) throw new Error(result.error || `Could not switch tenant (${response.status})`);
+      window.location.assign(`/t/${tenant.slug}`);
+    } catch (reason) {
+      setSyncError(reason instanceof Error ? reason.message : 'Could not switch tenant.');
+    }
+  };
 
   useEffect(() => {
     if (!allowedPages.includes('leads')) return;
@@ -1268,8 +1371,22 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
           onSignOut={() => { void onLogout().catch((reason: unknown) => setSyncError(reason instanceof Error ? reason.message : 'Could not sign out.')); }}
         />
         <div className="flex min-h-10 items-center justify-between gap-3 border-b border-slate-100 bg-white px-4 py-1.5 text-xs text-slate-500 sm:px-6">
-          <span>{syncError ? <span role="alert" className="text-rose-700">Shared-data sync failed: {syncError}</span> : `Signed in as ${staffUser.name} (${staffUser.role})`}</span>
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: activeTenant.theme.primaryColor }} />
+            <span className="truncate font-semibold text-slate-700">{activeTenant.name}</span>
+            <span className="hidden sm:inline">{syncError ? <span role="alert" className="text-rose-700">Shared-data sync failed: {syncError}</span> : `· Signed in as ${staffUser.name} (${staffUser.role})`}</span>
+          </span>
           <div className="flex items-center gap-2">
+            {staffUser.role === 'admin' && tenants.length > 1 && (
+              <select
+                aria-label="Active tenant"
+                value={activeTenant.id}
+                onChange={(event) => { void handleActivateTenant(event.target.value); }}
+                className="hidden h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 outline-none focus:border-[var(--color-primary)] md:block"
+              >
+                {tenants.filter((tenant) => tenant.status === 'Active').map((tenant) => <option key={tenant.id} value={tenant.id}>{tenant.name}</option>)}
+              </select>
+            )}
             {staffUser.role !== 'user' && <button type="button" onClick={() => setShowStaffInvite(true)} className="rounded-lg border border-slate-200 px-3 py-1.5 font-semibold text-slate-600 hover:bg-slate-50">Invite staff</button>}
             <button type="button" onClick={() => setShowMyProfile(true)} className="rounded-lg border border-slate-200 px-3 py-1.5 font-semibold text-slate-600 hover:bg-slate-50">My Profile</button>
             <button type="button" onClick={() => {
@@ -1442,7 +1559,16 @@ function CrmApp({ staffUser, onStaffUserChange, onLogout }: { staffUser: StaffUs
             <AnalyticsHub leads={leads} opportunities={opportunities} invoices={invoices} />
           )}
 
-          {currentView === 'admin' && staffUser.role === 'admin' && <AdminHub onInviteStaff={() => setShowStaffInvite(true)} />}
+          {currentView === 'admin' && staffUser.role === 'admin' && (
+            <AdminHub
+              onInviteStaff={() => setShowStaffInvite(true)}
+              tenants={tenants}
+              activeTenantId={activeTenant.id}
+              onActivateTenant={(tenantId) => { void handleActivateTenant(tenantId); }}
+              onSaveTenant={handleSaveTenant}
+              onDeleteTenant={handleDeleteTenant}
+            />
+          )}
 
           {currentView === 'org-setup' && (
             <OrganizationSetup profile={organization} onSave={handleSaveOrganization} />
@@ -1566,8 +1692,9 @@ export default function App() {
           throw new Error(result.error || `Could not verify staff session (${response.status})`);
         }
         const result = await response.json() as { data: StaffUser };
-        if (result.data.profileCompleted) await prepareStaffData(result.data);
-        setStaffUser(result.data);
+        const selectedUser = await selectTenantFromUrl(result.data);
+        if (selectedUser.profileCompleted) await prepareStaffData(selectedUser);
+        setStaffUser(selectedUser);
       })
       .catch((reason: unknown) => setAuthError(reason instanceof Error ? reason.message : 'Could not load shared CRM data.'))
       .finally(() => setCheckingSession(false));
@@ -1583,8 +1710,9 @@ export default function App() {
     return <div>
       {authError && <p role="alert" className="fixed left-1/2 top-4 z-10 -translate-x-1/2 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{authError}</p>}
       <StaffLogin onAuthenticated={async (user) => {
-        if (user.profileCompleted) await prepareStaffData(user);
-        setStaffUser(user);
+        const selectedUser = await selectTenantFromUrl(user);
+        if (selectedUser.profileCompleted) await prepareStaffData(selectedUser);
+        setStaffUser(selectedUser);
         setAuthError('');
       }} />
     </div>;
